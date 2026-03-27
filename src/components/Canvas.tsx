@@ -1,7 +1,8 @@
-import React, { useRef, useState, useCallback } from "react";
+import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Box } from "@mui/material";
-import type { ShapeType, SvgElement } from "../hooks/useSvgStore";
-import HandDrawnElement_v2 from "./HandDrawnElement_v2";
+import type { ShapeType, SvgElement } from "../types/svg";
+import { HandDrawnElement_v2 } from "./HandDrawnElement_v2";
+import { isElementInBox, getElementBounds } from "../utils/geometry";
 
 interface CanvasProps {
   elements: SvgElement[];
@@ -26,6 +27,8 @@ interface CanvasProps {
   onUpdateZoom: (delta: number) => void;
   theme: "light" | "dark";
   gridEnabled?: boolean;
+  boardMode?: "moodboard" | "designer";
+  artboardSize?: { width: number; height: number };
 }
 
 type DragMode = "move" | "create" | "resize" | "select" | "pencil";
@@ -50,31 +53,18 @@ const Canvas: React.FC<CanvasProps> = ({
   onUpdateZoom,
   theme,
   gridEnabled = true,
+  boardMode = "moodboard",
+  artboardSize = { width: 1080, height: 1080 },
 }) => {
   const [dragInfo, setDragInfo] = useState<{
-    mode: DragMode;
-    id?: string;
-    startX: number;
-    startY: number;
-    handle?: string;
-    elementOffsets?: {
-      id: string;
-      x: number;
-      y: number;
-      x2?: number;
-      y2?: number;
-      points?: { x: number; y: number }[];
-    }[];
+    mode: DragMode; id?: string; startX: number; startY: number; handle?: string;
+    elementOffsets?: { id: string; x: number; y: number; x2?: number; y2?: number; points?: { x: number; y: number }[]; }[];
     originalElement?: Partial<SvgElement>;
   } | null>(null);
 
-  const [selectionBox, setSelectionBox] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
+  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number; } | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [editingTextPos, setEditingTextPos] = useState<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
 
@@ -82,704 +72,268 @@ const Canvas: React.FC<CanvasProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingTextId) return;
-      const isCtrl = e.metaKey || e.ctrlKey;
-
-      if (e.key.toLowerCase() === "a" && isCtrl) {
-        e.preventDefault();
-        onSelect(elements.map((el) => el.id));
-        return;
-      }
-      if (e.key.toLowerCase() === "d" && isCtrl) {
-        e.preventDefault();
-        onDuplicate(selectedIds);
-        return;
-      }
-      if (e.key.toLowerCase() === "f" && isCtrl) {
-        e.preventDefault();
-        onBringToFront(selectedIds);
-        return;
-      }
-      if (e.key.toLowerCase() === "b" && isCtrl) {
-        e.preventDefault();
-        onSendToBack(selectedIds);
-        return;
-      }
-      if (e.key.toLowerCase() === "z" && isCtrl) {
-        e.preventDefault();
-        if (e.shiftKey) onRedo();
-        else onUndo();
-        return;
-      }
-      if (e.key.toLowerCase() === "y" && isCtrl) {
-        e.preventDefault();
-        onRedo();
-        return;
-      }
-
-      switch (e.key.toLowerCase()) {
-        case "v":
-          onSetActiveTool("selection");
-          break;
-        case "r":
-          onSetActiveTool("rect");
-          break;
-        case "o":
-          onSetActiveTool("circle");
-          break;
-        case "l":
-          onSetActiveTool("line");
-          break;
-        case "a":
-          onSetActiveTool("arrow");
-          break;
-        case "t":
-          onSetActiveTool("text");
-          break;
-        case "p":
-          onSetActiveTool("pencil");
-          break;
-        case "backspace":
-        case "delete":
-          if (selectedIds.length > 0) onRemoveElements(selectedIds);
-          break;
+      const isCtrl = (e.metaKey || e.ctrlKey) && !e.altKey;
+      if (e.key.toLowerCase() === "a" && isCtrl) { e.preventDefault(); onSelect(elements.map(el => el.id)); return; }
+      if (e.key.toLowerCase() === "d" && isCtrl) { e.preventDefault(); onDuplicate(selectedIds); return; }
+      if (e.key.toLowerCase() === "f" && isCtrl) { e.preventDefault(); onBringToFront(selectedIds); return; }
+      if (e.key.toLowerCase() === "b" && isCtrl) { e.preventDefault(); onSendToBack(selectedIds); return; }
+      if (e.key.toLowerCase() === "z" && isCtrl) { e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo(); return; }
+      if (e.key.toLowerCase() === "y" && isCtrl) { e.preventDefault(); onRedo(); return; }
+      
+      if (!isCtrl) {
+        switch (e.key.toLowerCase()) {
+          case "v": onSetActiveTool("selection"); break;
+          case "r": onSetActiveTool("rect"); break;
+          case "o": onSetActiveTool("circle"); break;
+          case "l": onSetActiveTool("line"); break;
+          case "a": onSetActiveTool("arrow"); break;
+          case "t": onSetActiveTool("text"); break;
+          case "p": onSetActiveTool("pencil"); break;
+          case "backspace":
+          case "delete": if (selectedIds.length > 0) onRemoveElements(selectedIds); break;
+        }
       }
     };
-
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [
-    editingTextId,
-    selectedIds,
-    elements,
-    onSetActiveTool,
-    onRemoveElements,
-    onSelect,
-    onDuplicate,
-    onBringToFront,
-    onSendToBack,
-  ]);
+  }, [editingTextId, selectedIds, elements, onSetActiveTool, onRemoveElements, onSelect, onDuplicate, onBringToFront, onSendToBack, onUndo, onRedo]);
 
-  const getMousePos = useCallback(
-    (e: React.MouseEvent | MouseEvent) => {
-      if (!svgRef.current) return { x: 0, y: 0 };
-      const rect = svgRef.current.getBoundingClientRect();
+  useEffect(() => {
+    if (editingTextId && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [editingTextId]);
 
-      // Position relative to SVG element
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
+  const getMousePos = useCallback((e: React.MouseEvent | MouseEvent) => {
+    if (!svgRef.current) return { x: 0, y: 0 };
+    const rect = svgRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    return { x: x / (zoom / 100) - offset.x, y: y / (zoom / 100) - offset.y };
+  }, [zoom, offset]);
 
-      return {
-        x: x / (zoom / 100) - offset.x,
-        y: y / (zoom / 100) - offset.y,
-      };
-    },
-    [zoom, offset],
-  );
-
-  const snapToGrid = useCallback(
-    (val: number) => {
-      if (!gridEnabled) return val;
-      return Math.round(val / 30) * 30;
-    },
-    [gridEnabled],
-  );
+  const snapToGrid = useCallback((val: number) => gridEnabled ? Math.round(val / 30) * 30 : val, [gridEnabled]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
-
     if (activeTool === "pencil") {
       const id = onAddElement("pencil", { x: pos.x, y: pos.y, points: [pos] });
-      drawingIdRef.current = id;
-      setDragInfo({ mode: "pencil", startX: pos.x, startY: pos.y });
+      drawingIdRef.current = id; setDragInfo({ mode: "pencil", startX: pos.x, startY: pos.y });
       return;
     }
-
-    if (
-      activeTool === "rect" ||
-      activeTool === "circle" ||
-      activeTool === "line" ||
-      activeTool === "arrow"
-    ) {
-      const snappedPos = { x: snapToGrid(pos.x), y: snapToGrid(pos.y) };
-      const id = onAddElement(activeTool as ShapeType, {
-        x: snappedPos.x,
-        y: snappedPos.y,
-        width: 0,
-        height: 0,
-        radius: 0,
-        x2: snappedPos.x,
-        y2: snappedPos.y,
-      });
-      setDragInfo({
-        mode: "create",
-        id,
-        startX: snappedPos.x,
-        startY: snappedPos.y,
-      });
-      onSelect([id]);
+    if (["rect", "circle", "line", "arrow"].includes(activeTool)) {
+      const snPos = { x: snapToGrid(pos.x), y: snapToGrid(pos.y) };
+      const id = onAddElement(activeTool as ShapeType, { x: snPos.x, y: snPos.y, width: 0, height: 0, x2: snPos.x, y2: snPos.y });
+      setDragInfo({ mode: "create", id, startX: snPos.x, startY: snPos.y }); onSelect([id]);
       return;
     }
-
     if (activeTool === "text") {
-      const id = onAddElement("text", { x: pos.x, y: pos.y, content: "" }); // Start empty
-      onSelect([id]);
-      setEditingTextId(id);
+      // Check if clicked on an existing text element
+      const clickedText = [...elements].reverse().find(el => {
+        if (el.type !== "text") return false;
+        const b = getElementBounds(el);
+        return pos.x >= b.x && pos.x <= b.x + b.width && pos.y >= b.y && pos.y <= b.y + b.height;
+      });
+
+      if (clickedText) {
+        onSelect([clickedText.id]);
+        setEditingTextId(clickedText.id);
+        setEditingTextPos({ x: clickedText.x, y: clickedText.y });
+        setTimeout(() => textareaRef.current?.focus(), 50);
+      } else {
+        const id = onAddElement("text", { x: pos.x, y: pos.y, content: "" });
+        onSelect([id]); 
+        setEditingTextId(id); 
+        setEditingTextPos({ x: pos.x, y: pos.y });
+      }
       return;
     }
-
     if (activeTool === "selection" && (e.button === 1 || e.altKey)) {
-      setIsPanning(true);
-      setDragInfo({ mode: "move", startX: e.clientX, startY: e.clientY }); // Overloaded for pan
+      setIsPanning(true); setDragInfo({ mode: "move", startX: e.clientX, startY: e.clientY });
       return;
     }
-
-    if (activeTool === "selection") {
-      // Don't clear selection yet, check if we clicked a handle (handled separately)
-      // or an element (handled separately). If background, start selection box.
-      onSelect([]);
-      setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
+    if (activeTool === "selection" && e.target === svgRef.current) {
+      onSelect([]); setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       setDragInfo({ mode: "select", startX: pos.x, startY: pos.y });
     }
-  };
-
-  const handleDoubleClick = (e: React.MouseEvent) => {
-    const pos = getMousePos(e);
-    const id = onAddElement("text", { x: pos.x, y: pos.y, content: "" });
-    onSelect([id]);
-    setEditingTextId(id);
-  };
-
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey) {
-      // Zoom
-      const delta = e.deltaY > 0 ? -5 : 5;
-      onUpdateZoom(delta);
-      return;
-    }
-    // Pan
-    setOffset((prev) => ({
-      x: prev.x - e.deltaX / (zoom / 100),
-      y: prev.y - e.deltaY / (zoom / 100),
-    }));
-  };
-
-  const isElementInBox = (
-    el: SvgElement,
-    box: { x: number; y: number; width: number; height: number },
-  ) => {
-    const minX = Math.min(box.x, box.x + box.width);
-    const minY = Math.min(box.y, box.y + box.height);
-    const maxX = Math.max(box.x, box.x + box.width);
-    const maxY = Math.max(box.y, box.y + box.height);
-
-    let elMinX = el.x;
-    let elMinY = el.y;
-    let elMaxX = el.x + (el.width || 0);
-    let elMaxY = el.y + (el.height || 0);
-
-    if (el.type === "circle") {
-      elMaxX = el.x + (el.width || 0);
-      elMaxY = el.y + (el.height || 0);
-    } else if (el.type === "line" || el.type === "arrow") {
-      elMinX = Math.min(el.x, el.x2 || el.x);
-      elMinY = Math.min(el.y, el.y2 || el.y);
-      elMaxX = Math.max(el.x, el.x2 || el.x);
-      elMaxY = Math.max(el.y, el.y2 || el.y);
-    } else if (el.type === "pencil" && el.points) {
-      elMinX = Math.min(...el.points.map((p) => p.x));
-      elMinY = Math.min(...el.points.map((p) => p.y));
-      elMaxX = Math.max(...el.points.map((p) => p.x));
-      elMaxY = Math.max(...el.points.map((p) => p.y));
-    }
-
-    return elMinX < maxX && elMaxX > minX && elMinY < maxY && elMaxY > minY;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
     if (isPanning && dragInfo) {
-      const dx = (e.clientX - dragInfo.startX) / (zoom / 100);
-      const dy = (e.clientY - dragInfo.startY) / (zoom / 100);
-      setOffset((prev) => ({ x: prev.x + dx, y: prev.y + dy }));
-      setDragInfo({ ...dragInfo, startX: e.clientX, startY: e.clientY });
+      const dx = (e.clientX - dragInfo.startX) / (zoom / 100), dy = (e.clientY - dragInfo.startY) / (zoom / 100);
+      setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); setDragInfo({ ...dragInfo, startX: e.clientX, startY: e.clientY });
       return;
     }
-
-    // For snapping, only snap if grid is enabled AND user is holding Shift
-    const shouldSnap = gridEnabled && e.shiftKey;
-    const maybeSnap = (val: number) => (shouldSnap ? snapToGrid(val) : val);
-    const snappedPos = { x: maybeSnap(pos.x), y: maybeSnap(pos.y) };
-
     if (!dragInfo) return;
+    const maybeSnap = (v: number) => (gridEnabled && e.shiftKey) ? snapToGrid(v) : v;
+    const snPos = { x: maybeSnap(pos.x), y: maybeSnap(pos.y) };
 
     if (dragInfo.mode === "pencil" && drawingIdRef.current) {
-      const target = elements.find((el) => el.id === drawingIdRef.current);
-      const lastPoint = target?.points?.[target.points.length - 1];
-      // NO snapping for pencil points to avoid stair-step lines
-      if (
-        !lastPoint ||
-        Math.hypot(pos.x - lastPoint.x, pos.y - lastPoint.y) > 3
-      ) {
-        onAddPoint(drawingIdRef.current, pos.x, pos.y);
-      }
+      onAddPoint(drawingIdRef.current, pos.x, pos.y);
     } else if (dragInfo.mode === "create" && dragInfo.id) {
-      const dx = snappedPos.x - dragInfo.startX;
-      const dy = snappedPos.y - dragInfo.startY;
-      const target = elements.find((el) => el.id === dragInfo.id);
-      if (!target) return;
-
-      if (target.type === "circle") {
-        const width = Math.abs(dx);
-        const height = Math.abs(dy);
-        onUpdateElement(dragInfo.id, {
-          x: Math.min(snappedPos.x, dragInfo.startX),
-          y: Math.min(snappedPos.y, dragInfo.startY),
-          width,
-          height,
-        });
-      } else if (target.type === "line" || target.type === "arrow") {
-        onUpdateElement(dragInfo.id, { x2: snappedPos.x, y2: snappedPos.y });
-      } else {
-        onUpdateElement(dragInfo.id, {
-          x: Math.min(snappedPos.x, dragInfo.startX),
-          y: Math.min(snappedPos.y, dragInfo.startY),
-          width: Math.abs(dx),
-          height: Math.abs(dy),
-        });
-      }
+      const target = elements.find(el => el.id === dragInfo.id); if (!target) return;
+      if (target.type === "line" || target.type === "arrow") onUpdateElement(dragInfo.id, { x2: snPos.x, y2: snPos.y });
+      else onUpdateElement(dragInfo.id, { x: Math.min(snPos.x, dragInfo.startX), y: Math.min(snPos.y, dragInfo.startY), width: Math.abs(snPos.x - dragInfo.startX), height: Math.abs(snPos.y - dragInfo.startY) });
     } else if (dragInfo.mode === "move") {
-      // Use floating-point, only snap if user holds Shift
-      const dx = pos.x - dragInfo.startX;
-      const dy = pos.y - dragInfo.startY;
-      if (dx === 0 && dy === 0) return;
-      onUpdateElements(selectedIds, (el) => {
-        const offset = dragInfo.elementOffsets?.find((o) => o.id === el.id);
-        if (!offset) return {};
-        const updates: Partial<SvgElement> = {
-          x: maybeSnap(offset.x + dx),
-          y: maybeSnap(offset.y + dy),
-        };
-        if (el.type === "line" || el.type === "arrow") {
-          updates.x2 = maybeSnap((offset.x2 || 0) + dx);
-          updates.y2 = maybeSnap((offset.y2 || 0) + dy);
-        } else if (el.type === "pencil" && offset.points) {
-          updates.points = offset.points.map((p: any) => ({
-            x: p.x + dx,
-            y: p.y + dy,
-          }));
-        }
+      const dx = pos.x - dragInfo.startX, dy = pos.y - dragInfo.startY;
+      onUpdateElements(selectedIds, el => {
+        const off = dragInfo.elementOffsets?.find(o => o.id === el.id); if (!off) return {};
+        const updates: Partial<SvgElement> = { x: maybeSnap(off.x + dx), y: maybeSnap(off.y + dy) };
+        if (el.type === "line" || el.type === "arrow") { updates.x2 = maybeSnap((off.x2 || 0) + dx); updates.y2 = maybeSnap((off.y2 || 0) + dy); }
+        else if (el.type === "pencil" && off.points) updates.points = off.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
         return updates;
       });
     } else if (dragInfo.mode === "select") {
-      const newBox = {
-        x: dragInfo.startX,
-        y: dragInfo.startY,
-        width: snappedPos.x - dragInfo.startX,
-        height: snappedPos.y - dragInfo.startY,
-      };
-      setSelectionBox(newBox);
-      const idsInside = elements
-        .filter((el) => isElementInBox(el, newBox))
-        .map((el) => el.id);
-      // Optimized state update to prevent infinite loops
-      if (JSON.stringify(idsInside) !== JSON.stringify(selectedIds)) {
-        onSelect(idsInside);
-      }
-    } else if (
-      dragInfo.mode === "resize" &&
-      dragInfo.id &&
-      dragInfo.originalElement
-    ) {
-      const el = dragInfo.originalElement as SvgElement;
-      const dx = snappedPos.x - dragInfo.startX;
-      const dy = snappedPos.y - dragInfo.startY;
+      const box = { x: dragInfo.startX, y: dragInfo.startY, width: snPos.x - dragInfo.startX, height: snPos.y - dragInfo.startY };
+      setSelectionBox(box);
+      const ids = elements.filter(el => isElementInBox(el, box)).map(el => el.id);
+      if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
+    } else if (dragInfo.mode === "resize" && dragInfo.id && dragInfo.originalElement) {
+      const el = dragInfo.originalElement as SvgElement, dx = snPos.x - dragInfo.startX, dy = snPos.y - dragInfo.startY;
       const updates: Partial<SvgElement> = {};
-
       if (dragInfo.handle === "rotate") {
-        const centerX = el.x + (el.width || 0) / 2;
-        const centerY = el.y + (el.height || 0) / 2;
-        const angle = Math.atan2(
-          snappedPos.y - centerY,
-          snappedPos.x - centerX,
-        );
-        updates.rotation = (angle * 180) / Math.PI + 90;
-      } else if (el.type === "circle") {
-        switch (dragInfo.handle) {
-          case "br":
-            updates.width = Math.max(5, (el.width || 0) + dx);
-            updates.height = Math.max(5, (el.height || 0) + dy);
-            break;
-          case "tr":
-            updates.y = el.y + dy;
-            updates.width = Math.max(5, (el.width || 0) + dx);
-            updates.height = Math.max(5, (el.height || 0) - dy);
-            break;
-          case "bl":
-            updates.x = el.x + dx;
-            updates.width = Math.max(5, (el.width || 0) - dx);
-            updates.height = Math.max(5, (el.height || 0) + dy);
-            break;
-          case "tl":
-            updates.x = el.x + dx;
-            updates.y = el.y + dy;
-            updates.width = Math.max(5, (el.width || 0) - dx);
-            updates.height = Math.max(5, (el.height || 0) - dy);
-            break;
-        }
-      } else if (el.type === "line" || el.type === "arrow") {
-        if (dragInfo.handle === "p1") {
-          updates.x = (el.x || 0) + dx;
-          updates.y = (el.y || 0) + dy;
-        } else if (dragInfo.handle === "p2") {
-          updates.x2 = (el.x2 || 0) + dx;
-          updates.y2 = (el.y2 || 0) + dy;
-        }
-      } else if (el.type === "text") {
-        const baseFontSize = el.fontSize || 24;
-        updates.fontSize = Math.max(
-          8,
-          baseFontSize + (dragInfo.handle?.includes("r") ? dx / 5 : -dx / 5),
-        );
+        let cX = el.x + (el.width||0)/2, cY = el.y + (el.height||0)/2;
+        updates.rotation = (Math.atan2(snPos.y - cY, snPos.x - cX) * 180 / Math.PI) + 90;
       } else {
-        switch (dragInfo.handle) {
-          case "br":
-            updates.width = Math.max(5, (el.width || 0) + dx);
-            updates.height = Math.max(5, (el.height || 0) + dy);
-            break;
-          case "tr":
-            updates.y = el.y + dy;
-            updates.width = Math.max(5, (el.width || 0) + dx);
-            updates.height = Math.max(5, (el.height || 0) - dy);
-            break;
-          case "bl":
-            updates.x = el.x + dx;
-            updates.width = Math.max(5, (el.width || 0) - dx);
-            updates.height = Math.max(5, (el.height || 0) + dy);
-            break;
-          case "tl":
-            updates.x = el.x + dx;
-            updates.y = el.y + dy;
-            updates.width = Math.max(5, (el.width || 0) - dx);
-            updates.height = Math.max(5, (el.height || 0) - dy);
-            break;
-        }
+        const h = dragInfo.handle;
+        if (h === "br") { updates.width = Math.max(5, (el.width || 0) + dx); updates.height = Math.max(5, (el.height || 0) + dy); }
+        else if (h === "tr") { updates.y = el.y + dy; updates.width = Math.max(5, (el.width || 0) + dx); updates.height = Math.max(5, (el.height || 0) - dy); }
+        else if (h === "bl") { updates.x = el.x + dx; updates.width = Math.max(5, (el.width || 0) - dx); updates.height = Math.max(5, (el.height || 0) + dy); }
+        else if (h === "tl") { updates.x = el.x + dx; updates.y = el.y + dy; updates.width = Math.max(5, (el.width || 0) - dx); updates.height = Math.max(5, (el.height || 0) - dy); }
+        else if (h === "p1") { updates.x = (el.x || 0) + dx; updates.y = (el.y || 0) + dy; }
+        else if (h === "p2") { updates.x2 = (el.x2 || 0) + dx; updates.y2 = (el.y2 || 0) + dy; }
       }
       onUpdateElement(dragInfo.id, updates);
     }
   };
 
   const handleMouseUp = () => {
-    if (dragInfo?.mode === "create" || dragInfo?.mode === "pencil") {
+    if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil")) {
       onSetActiveTool("selection");
     }
-    setIsPanning(false);
-    drawingIdRef.current = null;
-    setDragInfo(null);
-    setSelectionBox(null);
-  };
+    setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null);
+  }
 
-  const handleElementMouseDown = (e: React.MouseEvent, el: SvgElement) => {
-    if (activeTool !== "selection") return;
-    e.stopPropagation();
-
-    let newSelection = [...selectedIds];
-    if (e.shiftKey) {
-      newSelection = selectedIds.includes(el.id)
-        ? selectedIds.filter((id) => id !== el.id)
-        : [...selectedIds, el.id];
-    } else if (!selectedIds.includes(el.id)) {
-      newSelection = [el.id];
-    } else if (el.type === "text") {
-      // Clicked an already selected text element -> edit
-      setEditingTextId(el.id);
-    }
-    onSelect(newSelection);
-
-    const pos = getMousePos(e);
-    const snappedPos = { x: snapToGrid(pos.x), y: snapToGrid(pos.y) };
-    setDragInfo({
-      mode: "move",
-      startX: snappedPos.x,
-      startY: snappedPos.y,
-      elementOffsets: elements
-        .filter((item) => newSelection.includes(item.id))
-        .map((item) => ({
-          id: item.id,
-          x: item.x,
-          y: item.y,
-          x2: item.x2,
-          y2: item.y2,
-          points: item.points ? [...item.points] : undefined,
-        })),
-    });
-  };
-
-  const handleHandleMouseDown = (
-    e: React.MouseEvent,
-    el: SvgElement,
-    handle: string,
-  ) => {
-    e.stopPropagation();
-    const pos = getMousePos(e);
-    const snappedPos = { x: snapToGrid(pos.x), y: snapToGrid(pos.y) };
-    setDragInfo({
-      mode: "resize",
-      id: el.id,
-      handle,
-      startX: snappedPos.x,
-      startY: snappedPos.y,
-      originalElement: { ...el },
-    });
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey) { onUpdateZoom(e.deltaY > 0 ? -5 : 5); return; }
+    setOffset(prev => ({ x: prev.x - e.deltaX / (zoom / 100), y: prev.y - e.deltaY / (zoom / 100) }));
   };
 
   const renderHandles = (el: SvgElement) => {
     if (el.type === "pencil") return null;
-
-    let minX = el.x;
-    let minY = el.y;
-    let maxX = el.x + (el.width || 0);
-    let maxY = el.y + (el.height || 0);
-
-    if (el.type === "circle") {
-      maxX = el.x + (el.width || 0);
-      maxY = el.y + (el.height || 0);
-    } else if (el.type === "line" || el.type === "arrow") {
-      minX = Math.min(el.x, el.x2 || el.x);
-      minY = Math.min(el.y, el.y2 || el.y);
-      maxX = Math.max(el.x, el.x2 || el.x);
-      maxY = Math.max(el.y, el.y2 || el.y);
-    } else if (el.type === "text") {
-      const fontSize = el.fontSize || 24;
-      const estimatedWidth = (el.content?.length || 10) * (fontSize * 0.6);
-      minX = el.x - 5;
-      minY = el.y - fontSize * 0.8;
-      maxX = el.x + estimatedWidth;
-      maxY = el.y + fontSize * 0.6;
-    }
-
-    if (el.type === "line" || el.type === "arrow") {
-      const handles = [
-        { id: "p1", x: el.x, y: el.y },
-        { id: "p2", x: el.x2 || el.x, y: el.y2 || el.y },
-      ];
-      return handles.map((hnd) => (
-        <circle
-          key={hnd.id}
-          cx={hnd.x}
-          cy={hnd.y}
-          r={6}
-          fill="white"
-          stroke="#4f8bff"
-          strokeWidth="1.5"
-          style={{ cursor: "crosshair", pointerEvents: "all" }}
-          onMouseDown={(e) => handleHandleMouseDown(e, el, hnd.id)}
-        />
-      ));
-    }
-
-    const handleSize = 10;
-    const handles = [
-      { id: "tl", x: minX, y: minY },
-      { id: "tr", x: maxX, y: minY },
-      { id: "bl", x: minX, y: maxY },
-      { id: "br", x: maxX, y: maxY },
-    ];
-
-    const baseHandles = handles.map((hnd) => (
-      <rect
-        key={hnd.id}
-        x={hnd.x - handleSize / 2}
-        y={hnd.y - handleSize / 2}
-        width={handleSize}
-        height={handleSize}
-        fill="white"
-        stroke="#4f8bff"
-        strokeWidth="1.5"
-        style={{
-          cursor: `${hnd.id === "tl" || hnd.id === "br" ? "nwse" : "nesw"}-resize`,
-          pointerEvents: "all",
-        }}
-        onMouseDown={(e) => handleHandleMouseDown(e, el, hnd.id)}
-      />
-    ));
-
+    const b = getElementBounds(el);
+    let minX = b.x, minY = b.y, maxX = b.x + b.width, maxY = b.y + b.height;
+    const handles = (el.type === "line" || el.type === "arrow") ? [{id:"p1", x:el.x, y:el.y}, {id:"p2", x:el.x2||el.x, y:el.y2||el.y}]
+      : [
+          {id:"tl", x:minX, y:minY}, {id:"tr", x:maxX, y:minY}, 
+          {id:"bl", x:minX, y:maxY}, {id:"br", x:maxX, y:maxY},
+          {id:"rotate", x:(minX+maxX)/2, y:minY - 30}
+        ];
+    
     const centerX = minX + (maxX - minX) / 2;
-    const rotationHandle = (
-      <g key="rotate-group">
-        <line
-          x1={centerX}
-          y1={minY}
-          x2={centerX}
-          y2={minY - 30}
-          stroke="#4f8bff"
-          strokeWidth="1"
-          strokeDasharray="2 2"
-        />
-        <circle
-          cx={centerX}
-          cy={minY - 30}
-          r={6}
-          fill="white"
-          stroke="#4f8bff"
-          strokeWidth="1.5"
-          style={{ cursor: "grab", pointerEvents: "all" }}
-          onMouseDown={(e) => handleHandleMouseDown(e, el, "rotate")}
-        />
+    const centerY = minY + (maxY - minY) / 2;
+
+    return (
+      <g transform={`rotate(${el.rotation || 0}, ${centerX}, ${centerY})`}>
+        <rect x={minX} y={minY} width={maxX - minX} height={maxY - minY} fill="none" stroke="#4f8bff" strokeWidth="1.5" />
+        {handles.map(h => {
+          if (h.id === "rotate") {
+            return (
+              <g key={h.id}>
+                <line x1={h.x} y1={h.y + 6} x2={h.x} y2={minY} stroke="#4f8bff" strokeWidth="1" strokeDasharray="2 2" />
+                <circle cx={h.x} cy={h.y} r={6} fill="white" stroke="#4f8bff" strokeWidth="1.5" style={{ cursor: "grab", pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
+              </g>
+            );
+          }
+          return el.type === "line" || el.type === "arrow" 
+            ? <circle key={h.id} cx={h.x} cy={h.y} r={6} fill="white" stroke="#4f8bff" strokeWidth="1.5" style={{ cursor: "crosshair", pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
+            : <rect key={h.id} x={h.x - 6} y={h.y - 6} width={12} height={12} rx={2} fill="white" stroke="#4f8bff" strokeWidth="2" style={{ cursor: `${h.id==="tl"||h.id==="br"?"nwse":"nesw"}-resize`, pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />;
+        })}
       </g>
     );
-
-    return [...baseHandles, rotationHandle];
   };
 
-  const singleSelectedElement = elements.find(
-    (el) =>
-      el.id === editingTextId ||
-      (el.id === selectedIds[0] && selectedIds.length === 1),
-  );
-
-  React.useEffect(() => {
-    if (editingTextId && textareaRef.current) {
-      textareaRef.current.focus();
-      // Trigger height adjustment
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
-    }
-  }, [editingTextId, singleSelectedElement]);
+  const editingEl = elements.find(el => el.id === editingTextId);
 
   return (
-    <Box
-      sx={{
-        width: "100%",
-        height: "100%",
-        bgcolor: theme === "dark" ? "#0b0e14" : "#ffffff",
-        position: "relative",
-        overflow: "hidden",
-        backgroundImage: gridEnabled
-          ? `radial-gradient(circle, ${theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.08)"} 1px, transparent 1px)`
-          : "none",
-        backgroundSize: `${30 * (zoom / 100)}px ${30 * (zoom / 100)}px`,
-        backgroundPosition: `${offset.x * (zoom / 100)}px ${offset.y * (zoom / 100)}px`,
-        transition: "background-color 0.3s ease",
-      }}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      onMouseUp={handleMouseUp}
-      onMouseLeave={handleMouseUp}
-      onDoubleClick={handleDoubleClick}
-      onWheel={handleWheel}
-    >
-      <svg
-        ref={svgRef}
-        width="100%"
-        height="100%"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ pointerEvents: "all", display: "block" }}
-      >
-        <g
-          transform={`translate(${offset.x * (zoom / 100)}, ${offset.y * (zoom / 100)}) scale(${zoom / 100})`}
-        >
-          {elements.map((el) => (
-            <g
-              key={el.id}
-              onMouseDown={(e) => handleElementMouseDown(e, el)}
-              onDoubleClick={() =>
-                el.type === "text" && setEditingTextId(el.id)
-              }
-            >
-              <HandDrawnElement_v2
-                element={el}
-                isSelected={selectedIds.includes(el.id)}
-                onSelect={(id) => onSelect(id ? [id] : [])}
-              />
-              {selectedIds.includes(el.id) && selectedIds.length === 1 && (
-                <g
-                  transform={`rotate(${el.rotation || 0}, ${el.x + (el.width || 0) / 2}, ${el.y + (el.height || 0) / 2})`}
-                >
-                  {renderHandles(el)}
-                </g>
-              )}
-            </g>
-          ))}
-          {selectionBox && (
-            <rect
-              x={Math.min(selectionBox.x, selectionBox.x + selectionBox.width)}
-              y={Math.min(selectionBox.y, selectionBox.y + selectionBox.height)}
-              width={Math.abs(selectionBox.width)}
-              height={Math.abs(selectionBox.height)}
-              fill="rgba(79, 139, 255, 0.1)"
-              stroke="#4f8bff"
-              strokeWidth="1"
-              strokeDasharray="4 4"
-              style={{ pointerEvents: "none" }}
-            />
+    <Box sx={{ width:"100%", height:"100%", bgcolor: theme==="dark"?"#0b0e14":"#ffffff", position:"relative", overflow:"hidden", backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.1)"} 1px, transparent 1px)`:"none", backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px` }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onWheel={handleWheel}>
+      <svg ref={svgRef} width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+        <g transform={`translate(${offset.x*(zoom/100)}, ${offset.y*(zoom / 100)}) scale(${zoom / 100})`}>
+          {boardMode === "designer" && (
+             <g><rect x={-artboardSize.width / 2} y={-artboardSize.height / 2} width={artboardSize.width} height={artboardSize.height} fill={theme === "dark" ? "#161b22" : "#ffffff"} style={{ filter: "drop-shadow(0 10px 30px rgba(0,0,0,0.25))" }} />
+             <path d={`M -10000,-10000 H 10000 V 10000 H -10000 Z M ${-artboardSize.width/2},${-artboardSize.height/2} V ${artboardSize.height/2} H ${artboardSize.width/2} V ${-artboardSize.height/2} Z`} fill={theme==="dark"?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.08)"} fillRule="evenodd" /></g>
           )}
+          {elements.map(el => {
+            const isSelected = selectedIds.includes(el.id);
+            const isEditing = el.id === editingTextId;
+            return (
+              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text"){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: activeTool==="selection"?"pointer":"default" }}>
+                <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} />
+                {isSelected && selectedIds.length === 1 && renderHandles(el)}
+              </g>
+            );
+          })}
+          {selectionBox && <rect x={Math.min(selectionBox.x, selectionBox.x+selectionBox.width)} y={Math.min(selectionBox.y, selectionBox.y+selectionBox.height)} width={Math.abs(selectionBox.width)} height={Math.abs(selectionBox.height)} fill="rgba(79, 139, 255, 0.05)" stroke="#4f8bff" strokeWidth="1" />}
         </g>
       </svg>
-      {editingTextId && singleSelectedElement && (
-        <Box
-          sx={{
-            position: "absolute",
-            left: `${(singleSelectedElement.x + offset.x) * (zoom / 100)}px`,
-            top: `${(singleSelectedElement.y + offset.y - (singleSelectedElement.fontSize || 24) * 0.8) * (zoom / 100)}px`,
-            zIndex: 2000,
-            pointerEvents: "all",
-            transform: `rotate(${singleSelectedElement.rotation || 0}deg)`,
-            transformOrigin: "0% 80%", // Roughly matching the text baseline
-          }}
-        >
+      {editingTextId && editingTextPos && (
+        <Box sx={{ 
+          position: "absolute", 
+          left: `${(editingTextPos.x + offset.x) * (zoom / 100)}px`, 
+          top: `${(editingTextPos.y + offset.y) * (zoom / 100)}px`, 
+          zIndex: 2000,
+          transformOrigin: "top left"
+        }}>
           <textarea
             ref={textareaRef}
             autoFocus
-            defaultValue={singleSelectedElement.content || ""}
-            placeholder="Type something..."
-            onBlur={(e) => {
-              const value = e.target.value.trim();
-              if (!value) {
-                onRemoveElements([editingTextId!]);
-              } else {
-                onUpdateElement(editingTextId, { content: value });
+            value={editingEl?.content || ""}
+            onBlur={() => {
+              if (editingEl && !editingEl.content?.trim()) {
+                onRemoveElements([editingTextId]);
               }
               setEditingTextId(null);
+              setEditingTextPos(null);
               onSetActiveTool("selection");
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                const target = e.target as HTMLTextAreaElement;
-                const value = target.value.trim();
-                if (!value) {
-                  onRemoveElements([editingTextId!]);
-                } else {
-                  onUpdateElement(editingTextId, { content: value });
-                }
+                e.preventDefault();
+                textareaRef.current?.blur();
+              }
+              if (e.key === "Escape") {
                 setEditingTextId(null);
-                onSetActiveTool("selection");
+                setEditingTextPos(null);
               }
             }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = "auto";
-              target.style.height = `${target.scrollHeight}px`;
+            onChange={(e) => {
+              onUpdateElement(editingTextId, { content: e.target.value });
+              if (textareaRef.current) {
+                textareaRef.current.style.height = "auto";
+                textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+                textareaRef.current.style.width = "auto";
+                textareaRef.current.style.width = `${Math.max(150, textareaRef.current.scrollWidth)}px`;
+              }
             }}
             style={{
+              minWidth: "150px",
               background: "transparent",
-              color: theme === "dark" ? "white" : "#1f2328",
-              border: "1px solid #4f8bff",
-              borderRadius: "4px",
-              padding: "4px",
-              fontFamily:
-                singleSelectedElement.fontFamily || "Inter, sans-serif",
-              fontSize: `${(singleSelectedElement.fontSize || 24) * (zoom / 100)}px`,
+              color: editingEl?.stroke || (theme === "dark" ? "#ffffff" : "#000000"),
+              border: "none",
+              padding: 0,
+              margin: 0,
+              fontFamily: editingEl?.fontFamily || "Inter, sans-serif",
+              fontSize: `${(editingEl?.fontSize || 24) * (zoom / 100)}px`,
               lineHeight: 1.2,
-              fontWeight: 700,
+              fontWeight: 800,
               outline: "none",
-              resize: "both",
-              minWidth: `${120 * (zoom / 100)}px`,
-              minHeight: "24px",
+              resize: "none",
+              whiteSpace: "pre-wrap",
+              display: "block",
               overflow: "hidden",
-              caretColor: "#4f8bff",
             }}
           />
         </Box>
@@ -787,5 +341,4 @@ const Canvas: React.FC<CanvasProps> = ({
     </Box>
   );
 };
-
 export default Canvas;
