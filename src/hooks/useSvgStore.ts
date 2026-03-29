@@ -177,6 +177,13 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     [updateAndSave],
   );
 
+  const toggleLock = useCallback(
+    (id: string) => {
+      updateAndSave((prev) => prev.map((el) => (el.id === id ? { ...el, locked: !el.locked } : el)));
+    },
+    [updateAndSave],
+  );
+
   // Fix #4: addPoint still bypasses history for performance during drawing
   // (pushing a history entry per mouse-move would be too expensive).
   // Canvas must call finalizeDrawing() on mouseUp to commit the stroke.
@@ -316,6 +323,7 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     updateElements,
     removeElements,
     toggleVisibility,
+    toggleLock,
     addPoint,
     finalizeDrawing,
     duplicateElements,

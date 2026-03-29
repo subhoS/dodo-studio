@@ -34,4 +34,5 @@ export interface SvgElement {
   rotation?: number;
   cornerRadius?: number;
   bowing?: number;
+  locked?: boolean;
 }

@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
-  Paper,
   IconButton,
   Stack,
   Button,
@@ -19,14 +18,13 @@ import {
   Moon as DarkModeIcon,
   Minus as LineIcon,
   ArrowRight as ArrowIcon,
-  Eye as VisibleIcon,
-  EyeOff as HiddenIcon,
   Download as SaveIcon,
   Edit2 as EditIcon,
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import Canvas from "./components/Canvas";
 import PropertyBar from "./components/PropertyBar";
+import LayersPanel from "./components/LayersPanel";
 
 const App: React.FC = () => {
   const [boardMode, setBoardMode] = useState<"moodboard" | "designer">("moodboard");
@@ -42,6 +40,7 @@ const App: React.FC = () => {
     updateElements,
     removeElements,
     toggleVisibility,
+    toggleLock,
     addPoint,
     finalizeDrawing,
     duplicateElements,
@@ -62,7 +61,6 @@ const App: React.FC = () => {
   const [showLayers, setShowLayers] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [isEditingName, setIsEditingName] = useState(false);
-  const [draggedLayerIdx, setDraggedLayerIdx] = useState<number | null>(null);
 
   // Fix #7: reset zoom when switching modes so canvas feels fresh
   useEffect(() => {
@@ -229,30 +227,23 @@ const App: React.FC = () => {
           )}
 
           {showLayers && (
-            <Paper sx={{ position: "absolute", top: 20, right: 20, width: 240, maxHeight: "calc(100% - 140px)", borderRadius: 4, border: `1px solid ${borderColor}`, bgcolor: theme === "dark" ? "rgba(11, 14, 20, 0.9)" : "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(20px)", display: "flex", flexDirection: "column", overflow: "hidden", zIndex: 1200 }}>
-              <Box sx={{ p: 2, borderBottom: `1px solid ${borderColor}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Typography sx={{ fontWeight: 900, fontSize: "0.85rem", letterSpacing: "0.5px" }}>LAYERS</Typography>
-                <IconButton size="small" onClick={() => setShowLayers(false)}><LayersIcon size={14} /></IconButton>
-              </Box>
-              <Box sx={{ flexGrow: 1, overflowY: "auto", p: 1 }}>
-                {elements.slice().reverse().map((el, i) => {
-                  const actualIdx = elements.length - 1 - i;
-                  return (
-                    <Box key={el.id} 
-                      draggable 
-                      onDragStart={() => setDraggedLayerIdx(actualIdx)}
-                      onDragOver={(e) => { e.preventDefault(); }}
-                      onDrop={() => { if (draggedLayerIdx !== null) { reorderElements(draggedLayerIdx, actualIdx); setDraggedLayerIdx(null); } }}
-                      onClick={() => setSelectedIds([el.id])} 
-                      sx={{ p: 1.5, mb: 0.5, borderRadius: 2, bgcolor: selectedIds.includes(el.id) ? "rgba(79, 139, 255, 0.1)" : "transparent", color: selectedIds.includes(el.id) ? "#4f8bff" : textColor, cursor: "grab", display: "flex", alignItems: "center", gap: 1.5, border: draggedLayerIdx === actualIdx ? "2px dashed #4f8bff" : "none" }}>
-                      <Box sx={{ width: 8, height: 8, borderRadius: "50%", bgcolor: el.stroke }} />
-                      <Typography sx={{ flexGrow: 1, fontSize: "0.8rem", fontWeight: 800 }}>{el.name}</Typography>
-                      <IconButton size="small" onClick={(e) => { e.stopPropagation(); toggleVisibility(el.id); }}>{el.visible ? <VisibleIcon size={14} /> : <HiddenIcon size={14} />}</IconButton>
-                    </Box>
-                  );
-                })}
-              </Box>
-            </Paper>
+            <Box sx={{ position: "absolute", top: 20, right: 20, zIndex: 1200 }}>
+              <LayersPanel
+                elements={elements}
+                selectedIds={selectedIds}
+                onSelect={(ids) => setSelectedIds(ids)}
+                onToggleVisibility={toggleVisibility}
+                onToggleLock={toggleLock}
+                onRemoveElements={removeElements}
+                onDuplicate={(ids) => duplicateElements(ids)}
+                onReorder={reorderElements}
+                onBringToFront={bringToFront}
+                onSendToBack={sendToBack}
+                onClose={() => setShowLayers(false)}
+                onRename={(id, name) => updateElement(id, { name })}
+                theme={theme}
+              />
+            </Box>
           )}
         </Box>
       </Box>

@@ -32,7 +32,7 @@ interface CanvasProps {
   artboardSize?: { width: number; height: number };
 }
 
-type DragMode = "move" | "create" | "resize" | "select" | "pencil";
+type DragMode = "move" | "create" | "resize" | "select" | "pencil" | "group-resize" | "group-rotate";
 
 const Canvas: React.FC<CanvasProps> = ({
   elements,
@@ -60,8 +60,13 @@ const Canvas: React.FC<CanvasProps> = ({
 }) => {
   const [dragInfo, setDragInfo] = useState<{
     mode: DragMode; id?: string; startX: number; startY: number; handle?: string;
-    elementOffsets?: { id: string; x: number; y: number; x2?: number; y2?: number; points?: { x: number; y: number }[]; }[];
+    // extended: width/height/fontSize/rotation support group transforms
+    elementOffsets?: { id: string; x: number; y: number; x2?: number; y2?: number; points?: { x: number; y: number }[]; width?: number; height?: number; fontSize?: number; rotation?: number; }[];
     originalElement?: Partial<SvgElement>;
+    // group-resize: original group bounding box + which corner
+    groupBounds?: { gx: number; gy: number; gw: number; gh: number; handle: string };
+    // group-rotate: group center + angle at drag start
+    groupCenter?: { cx: number; cy: number; startAngle: number };
   } | null>(null);
 
   const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number; } | null>(null);
@@ -83,7 +88,14 @@ const Canvas: React.FC<CanvasProps> = ({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip ALL canvas keyboard shortcuts when the user is typing in any input field,
+      // textarea, select box, or any contentEditable (layer rename, project name, etc.)
+      const focused = document.activeElement;
+      const focusedTag = focused?.tagName.toLowerCase();
+      if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
+      if ((focused as HTMLElement)?.isContentEditable) return;
       if (editingTextId) return;
+
       const isCtrl = (e.metaKey || e.ctrlKey) && !e.altKey;
       if (e.key.toLowerCase() === "a" && isCtrl) { e.preventDefault(); onSelect(elements.map(el => el.id)); return; }
       if (e.key.toLowerCase() === "d" && isCtrl) { e.preventDefault(); onDuplicate(selectedIds); return; }
@@ -216,6 +228,87 @@ const Canvas: React.FC<CanvasProps> = ({
         .filter(el => el.visible && isElementInBox(el, box))
         .map(el => el.id);
       if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
+    } else if (dragInfo.mode === "group-resize" && dragInfo.groupBounds) {
+      const { gx, gy, gw, gh, handle } = dragInfo.groupBounds;
+      // Determine the fixed anchor corner and compute new group dimensions
+      let anchorX: number, anchorY: number, newGw: number, newGh: number;
+      switch (handle) {
+        case "br": anchorX = gx;      anchorY = gy;      newGw = Math.max(20, snPos.x - gx);         newGh = Math.max(20, snPos.y - gy);         break;
+        case "bl": anchorX = gx + gw; anchorY = gy;      newGw = Math.max(20, (gx+gw) - snPos.x);   newGh = Math.max(20, snPos.y - gy);         break;
+        case "tr": anchorX = gx;      anchorY = gy + gh; newGw = Math.max(20, snPos.x - gx);         newGh = Math.max(20, (gy+gh) - snPos.y);   break;
+        case "tl": anchorX = gx + gw; anchorY = gy + gh; newGw = Math.max(20, (gx+gw) - snPos.x);   newGh = Math.max(20, (gy+gh) - snPos.y);   break;
+        default:   anchorX = gx;      anchorY = gy;      newGw = gw; newGh = gh;
+      }
+      const scaleX = newGw / gw, scaleY = newGh / gh;
+      onUpdateElements(selectedIds, el => {
+        const off = dragInfo.elementOffsets?.find(o => o.id === el.id);
+        if (!off) return {};
+        const updates: Partial<SvgElement> = {
+          x: anchorX + (off.x - anchorX) * scaleX,
+          y: anchorY + (off.y - anchorY) * scaleY,
+        };
+        if (off.width  !== undefined) updates.width  = Math.max(5, off.width  * scaleX);
+        if (off.height !== undefined) updates.height = Math.max(5, off.height * scaleY);
+        // Scale font size proportionally (use min of X/Y scale)
+        if (off.fontSize !== undefined) updates.fontSize = Math.max(8, off.fontSize * Math.min(scaleX, scaleY));
+        if (el.type === "line" || el.type === "arrow") {
+          if (off.x2 !== undefined) updates.x2 = anchorX + (off.x2 - anchorX) * scaleX;
+          if (off.y2 !== undefined) updates.y2 = anchorY + (off.y2 - anchorY) * scaleY;
+        }
+        if (el.type === "pencil" && off.points) {
+          updates.points = off.points.map(p => ({
+            x: anchorX + (p.x - anchorX) * scaleX,
+            y: anchorY + (p.y - anchorY) * scaleY,
+          }));
+        }
+        return updates;
+      });
+    } else if (dragInfo.mode === "group-rotate" && dragInfo.groupCenter) {
+      const { cx, cy, startAngle } = dragInfo.groupCenter;
+      const currentAngle = Math.atan2(snPos.y - cy, snPos.x - cx);
+      const deltaDeg = (currentAngle - startAngle) * (180 / Math.PI);
+      const rad = deltaDeg * (Math.PI / 180);
+      const cosA = Math.cos(rad), sinA = Math.sin(rad);
+      // Helper: rotate any point around the group center
+      const rotPt = (px: number, py: number) => ({
+        x: cx + (px - cx) * cosA - (py - cy) * sinA,
+        y: cy + (px - cx) * sinA + (py - cy) * cosA,
+      });
+      onUpdateElements(selectedIds, el => {
+        const off = dragInfo.elementOffsets?.find(o => o.id === el.id);
+        if (!off) return {};
+        const updates: Partial<SvgElement> = {};
+
+        if (el.type === "line" || el.type === "arrow") {
+          // Both endpoints define the shape — rotate them, no rotation property needed
+          const s = rotPt(off.x, off.y);
+          const e2 = rotPt(off.x2 ?? off.x, off.y2 ?? off.y);
+          updates.x = s.x; updates.y = s.y;
+          updates.x2 = e2.x; updates.y2 = e2.y;
+        } else if (el.type === "pencil" && off.points) {
+          // All points define the shape — rotate each one
+          const newPts = off.points.map(p => rotPt(p.x, p.y));
+          updates.points = newPts;
+          updates.x = newPts[0]?.x ?? off.x;
+          updates.y = newPts[0]?.y ?? off.y;
+        } else if (el.type === "circle") {
+          // For circles x,y IS the visual center — orbit it directly
+          const nc = rotPt(off.x, off.y);
+          updates.x = nc.x; updates.y = nc.y;
+          updates.rotation = ((off.rotation ?? 0) + deltaDeg + 360) % 360;
+        } else {
+          // rect / text: x,y is the TOP-LEFT corner.
+          // Rotate the VISUAL CENTER (x+w/2, y+h/2), then re-derive top-left.
+          const hw = (off.width ?? 0) / 2;
+          const hh = (off.height ?? 0) / 2;
+          const nc = rotPt(off.x + hw, off.y + hh);
+          updates.x = nc.x - hw;
+          updates.y = nc.y - hh;
+          updates.rotation = ((off.rotation ?? 0) + deltaDeg + 360) % 360;
+        }
+        return updates;
+      });
+
     } else if (dragInfo.mode === "resize" && dragInfo.id && dragInfo.originalElement) {
       const el = dragInfo.originalElement as SvgElement, dx = snPos.x - dragInfo.startX, dy = snPos.y - dragInfo.startY;
       const updates: Partial<SvgElement> = {};
@@ -299,7 +392,7 @@ const Canvas: React.FC<CanvasProps> = ({
             const isSelected = selectedIds.includes(el.id);
             const isEditing = el.id === editingTextId;
             return (
-              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text"){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: activeTool==="selection"?"pointer":"default" }}>
+              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { if (el.locked) return; e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text" && !el.locked){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: el.locked ? "not-allowed" : activeTool==="selection"?"pointer":"default" }}>
                 <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} />
                 {isSelected && selectedIds.length === 1 && renderHandles(el)}
               </g>
@@ -346,16 +439,34 @@ const Canvas: React.FC<CanvasProps> = ({
                     });
                   }}
                 />
-                {/* Corner indicators */}
+                {/* Corner RESIZE handles */}
                 {[
-                  { x: gx,      y: gy },
-                  { x: gx + gw, y: gy },
-                  { x: gx,      y: gy + gh },
-                  { x: gx + gw, y: gy + gh },
-                ].map((corner, i) => (
-                  <rect key={i} x={corner.x - 5} y={corner.y - 5} width={10} height={10} rx={2}
+                  { handle: "tl", x: gx,      y: gy,       cursor: "nwse-resize" },
+                  { handle: "tr", x: gx + gw, y: gy,       cursor: "nesw-resize" },
+                  { handle: "bl", x: gx,      y: gy + gh,  cursor: "nesw-resize" },
+                  { handle: "br", x: gx + gw, y: gy + gh,  cursor: "nwse-resize" },
+                ].map((h) => (
+                  <rect key={h.handle}
+                    x={h.x - 6} y={h.y - 6} width={12} height={12} rx={2}
                     fill="white" stroke="#4f8bff" strokeWidth={1.5}
-                    style={{ pointerEvents: "none" }}
+                    style={{ cursor: h.cursor, pointerEvents: "all" }}
+                    onMouseDown={(e) => {
+                      e.stopPropagation();
+                      const pos = getMousePos(e);
+                      setDragInfo({
+                        mode: "group-resize",
+                        startX: pos.x,
+                        startY: pos.y,
+                        groupBounds: { gx, gy, gw, gh, handle: h.handle },
+                        elementOffsets: selectedEls.map(el => ({
+                          id: el.id, x: el.x, y: el.y,
+                          x2: el.x2, y2: el.y2,
+                          points: el.points ? [...el.points] : undefined,
+                          width: el.width, height: el.height,
+                          fontSize: el.fontSize,
+                        })),
+                      });
+                    }}
                   />
                 ))}
                 {/* Selection count badge */}
@@ -364,7 +475,44 @@ const Canvas: React.FC<CanvasProps> = ({
                   style={{ fill: "#fff", fontSize: "11px", fontWeight: 700, fontFamily: "Inter,sans-serif", pointerEvents: "none", userSelect: "none" }}>
                   {selectedEls.length} items
                 </text>
+                {/* Rotation handle — circle above the top-center */}
+                {(() => {
+                  const rhx = gx + gw / 2;
+                  const rhy = gy - 36;
+                  return (
+                    <g>
+                      <line x1={rhx} y1={rhy + 6} x2={rhx} y2={gy}
+                        stroke="#4f8bff" strokeWidth={1} strokeDasharray="3 3"
+                        style={{ pointerEvents: "none" }}
+                      />
+                      <circle cx={rhx} cy={rhy} r={7}
+                        fill="white" stroke="#4f8bff" strokeWidth={1.5}
+                        style={{ cursor: "grab", pointerEvents: "all" }}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          const pos = getMousePos(e);
+                          const cx = gx + gw / 2, cy = gy + gh / 2;
+                          setDragInfo({
+                            mode: "group-rotate",
+                            startX: pos.x, startY: pos.y,
+                            groupCenter: { cx, cy, startAngle: Math.atan2(pos.y - cy, pos.x - cx) },
+                            elementOffsets: selectedEls.map(el => ({
+                              id: el.id, x: el.x, y: el.y,
+                              x2: el.x2, y2: el.y2,
+                              points: el.points ? [...el.points] : undefined,
+                              rotation: el.rotation ?? 0,
+                            })),
+                          });
+                        }}
+                      />
+                      {/* Rotation icon hint */}
+                      <text x={rhx} y={rhy} textAnchor="middle" dominantBaseline="middle"
+                        style={{ fontSize: "9px", fill: "#4f8bff", pointerEvents: "none", userSelect: "none", fontWeight: 700 }}>↻</text>
+                    </g>
+                  );
+                })()}
               </g>
+
             );
           })()}
 
