@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement } from "../types/svg";
+import { simplifyPath } from "../utils/geometry";
 
 const STORAGE_KEY_PREFIX = "vibe_code_canvas_data_";
 
@@ -207,10 +208,15 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     (id: string) => {
       setAllElements((prev) => {
         const current = prev[activeMode] || [];
-        pushToHistory(current);
-        return prev; // no change to elements, just snapshot
+        const next = current.map((el) => {
+          if (el.id === id && el.type === "pencil" && el.points) {
+            return { ...el, points: simplifyPath(el.points, 1.5) };
+          }
+          return el;
+        });
+        pushToHistory(next);
+        return { ...prev, [activeMode]: next };
       });
-      void id; // id kept for potential future per-element logic
     },
     [activeMode, pushToHistory],
   );

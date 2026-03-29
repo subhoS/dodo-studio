@@ -215,7 +215,35 @@ const Canvas: React.FC<CanvasProps> = ({
     } else if (dragInfo.mode === "create" && dragInfo.id) {
       const target = elements.find(el => el.id === dragInfo.id); if (!target) return;
       if (target.type === "line" || target.type === "arrow") onUpdateElement(dragInfo.id, { x2: snPos.x, y2: snPos.y });
-      else onUpdateElement(dragInfo.id, { x: Math.min(snPos.x, dragInfo.startX), y: Math.min(snPos.y, dragInfo.startY), width: Math.abs(snPos.x - dragInfo.startX), height: Math.abs(snPos.y - dragInfo.startY) });
+      else {
+        let newWidth = Math.abs(snPos.x - dragInfo.startX);
+        let newHeight = Math.abs(snPos.y - dragInfo.startY);
+        
+        // SHIFT TO CONSTRAIN (1:1)
+        if (e.shiftKey) {
+          const size = Math.max(newWidth, newHeight);
+          newWidth = size;
+          newHeight = size;
+        }
+
+        let newX, newY;
+        // ALT TO CENTER
+        if (e.altKey) {
+          newX = dragInfo.startX - newWidth;
+          newY = dragInfo.startY - newHeight;
+          newWidth *= 2;
+          newHeight *= 2;
+        } else {
+          newX = Math.min(snPos.x, dragInfo.startX);
+          newY = Math.min(snPos.y, dragInfo.startY);
+          if (e.shiftKey) {
+             // adjust X/Y if constrained
+             newX = snPos.x < dragInfo.startX ? dragInfo.startX - newWidth : dragInfo.startX;
+             newY = snPos.y < dragInfo.startY ? dragInfo.startY - newHeight : dragInfo.startY;
+          }
+        }
+        onUpdateElement(dragInfo.id, { x: newX, y: newY, width: newWidth, height: newHeight });
+      }
     } else if (dragInfo.mode === "move") {
       const dx = pos.x - dragInfo.startX, dy = pos.y - dragInfo.startY;
       onUpdateElements(selectedIds, el => {

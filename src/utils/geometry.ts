@@ -58,3 +58,38 @@ export const isElementInBox = (element: SvgElement, box: Bounds): boolean => {
     elBounds.y + elBounds.height > minY
   );
 };
+
+export const simplifyPath = (points: { x: number; y: number }[], tolerance: number = 1): { x: number; y: number }[] => {
+  if (points.length < 3) return points;
+  
+  const sqTolerance = tolerance * tolerance;
+  
+  const getSqSegDist = (p: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+    let x = p1.x, y = p1.y, dx = p2.x - x, dy = p2.y - y;
+    if (dx !== 0 || dy !== 0) {
+      let t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+      if (t > 1) { x = p2.x; y = p2.y; }
+      else if (t > 0) { x += dx * t; y += dy * t; }
+    }
+    dx = p.x - x; dy = p.y - y;
+    return dx * dx + dy * dy;
+  };
+
+  const simplifyStep = (pts: { x: number; y: number }[], first: number, last: number, sqTol: number, simplified: { x: number; y: number }[]) => {
+    let maxSqDist = sqTol, index = -1;
+    for (let i = first + 1; i < last; i++) {
+      const sqDist = getSqSegDist(pts[i], pts[first], pts[last]);
+      if (sqDist > maxSqDist) { index = i; maxSqDist = sqDist; }
+    }
+    if (index !== -1) {
+      simplifyStep(pts, first, index, sqTol, simplified);
+      simplified.push(pts[index]);
+      simplifyStep(pts, index, last, sqTol, simplified);
+    }
+  };
+
+  const simplified = [points[0]];
+  simplifyStep(points, 0, points.length - 1, sqTolerance, simplified);
+  simplified.push(points[points.length - 1]);
+  return simplified;
+};
