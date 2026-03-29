@@ -7,7 +7,7 @@ import {
   Minus as LineIcon, ArrowRight as ArrowIcon, Edit2 as EditIcon, 
   Upload as ImportIcon, Trash2 as TrashIcon, Maximize, Grid as GridIcon,
   Sun as LightModeIcon, Moon as DarkModeIcon, 
-  ChevronLeft, Share2, Download, User
+  ChevronLeft, Share2, Download, User, Library
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import DodoLogo from "./components/DodoLogo";
@@ -16,6 +16,7 @@ import PropertyBar from "./components/PropertyBar";
 import LayersPanel from "./components/LayersPanel";
 import ShortcutsModal from "./components/ShortcutsModal";
 import Dashboard from "./components/Dashboard";
+import LibraryPanel from "./components/LibraryPanel";
 
 const App: React.FC = () => {
   const { 
@@ -33,6 +34,7 @@ const App: React.FC = () => {
 
   const [activeTool, setActiveTool] = useState("selection");
   const [showLayers, setShowLayers] = useState(false);
+  const [showLibrary, setShowLibrary] = useState(false);
   const [gridEnabled, setGridEnabled] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [zoom, setZoom] = useState(100);
@@ -140,6 +142,7 @@ const App: React.FC = () => {
     { id: "arrow", label: "Arrow (A)", icon: <ArrowIcon /> },
     { id: "pencil", label: "Pencil (P)", icon: <Pencil /> },
     { id: "text", label: "Text (T)", icon: <Type /> },
+    { id: "library", label: "Library", icon: <Library /> },
     { id: "section", label: "Section (S)", icon: <Maximize /> },
     { id: "import", label: "Import (I)", icon: <ImportIcon /> },
     { id: "grid", label: "Grid (G)", icon: <GridIcon /> },
@@ -237,7 +240,8 @@ const App: React.FC = () => {
               <Tooltip key={tool.id} title={tool.label} placement="right" arrow>
                 <IconButton
                   onClick={() => {
-                    if (tool.id === "layers") setShowLayers(!showLayers);
+                    if (tool.id === "layers") { setShowLayers(!showLayers); setShowLibrary(false); }
+                    else if (tool.id === "library") { setShowLibrary(!showLibrary); setShowLayers(false); }
                     else if (tool.id === "grid") setGridEnabled(!gridEnabled);
                     else if (tool.id === "import") document.getElementById("import-input")?.click();
                     else setActiveTool(tool.id);
@@ -266,7 +270,28 @@ const App: React.FC = () => {
           </Tooltip>
         </Box>
 
-        <Box sx={{ flexGrow: 1, position: "relative" }}>
+        <Box sx={{ flexGrow: 1, position: "relative", display: "flex" }}>
+          {showLibrary && (
+            <Box sx={{ position: "absolute", top: 20, left: 100, zIndex: 1200 }}>
+              <LibraryPanel 
+                theme={theme} 
+                onClose={() => setShowLibrary(false)} 
+                onAddItem={(type, name, content, svgContent) => {
+                  addElement(type, { 
+                    name, 
+                    content: content || "", 
+                    svgContent: svgContent || "",
+                    x: (window.innerWidth / 2) - 300, 
+                    y: (window.innerHeight / 2) - 100,
+                    width: 100,
+                    height: 100,
+                    fill: activeMode === "designer" ? "#22d3ee" : "transparent"
+                  });
+                }}
+              />
+            </Box>
+          )}
+
           <Canvas 
             elements={elements} 
             selectedIds={selectedIds} 

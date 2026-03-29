@@ -157,20 +157,53 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
             {element.type === "text" && (
               <>
                 <Divider orientation="vertical" flexItem />
-                <Stack direction="row" spacing={0.5} sx={{ p: 0.5, bgcolor: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", borderRadius: "8px" }}>
+                <Box sx={{ minWidth: 100, flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: "0.6rem", fontWeight: 900, opacity: 0.5, mb: 0.25 }}>
+                    FONT SIZE {element.fontSize || 24}px
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={element.fontSize || 24} min={8} max={200}
+                    onChange={(_, v) => handleUpdate({ fontSize: v as number })}
+                    sx={{ color: "#4f8bff", py: 0.75 }}
+                  />
+                </Box>
+                <Divider orientation="vertical" flexItem />
+                <Stack 
+                  direction="row" 
+                  spacing={0.5} 
+                  sx={{ 
+                    p: 0.5, 
+                    bgcolor: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", 
+                    borderRadius: "8px",
+                    maxWidth: 240,
+                    overflowX: "auto",
+                    "&::-webkit-scrollbar": { height: "2px" },
+                    "&::-webkit-scrollbar-thumb": { bgcolor: "rgba(34,211,238,0.3)", borderRadius: "2px" }
+                  }}
+                >
                   {[
-                    { id: "sans", label: "Sans", font: "Inter, sans-serif" },
-                    { id: "serif", label: "Serif", font: "Georgia, serif" },
-                    { id: "hand", label: "Hand", font: "Verdana, sans-serif" }
+                    { id: "pj", label: "Jakarta", font: "'Plus Jakarta Sans', sans-serif" },
+                    { id: "inter", label: "Inter", font: "Inter, sans-serif" },
+                    { id: "mont", label: "Mont", font: "Montserrat, sans-serif" },
+                    { id: "play", label: "Serif", font: "'Playfair Display', serif" },
+                    { id: "mono", label: "Mono", font: "'Space Mono', monospace" },
+                    { id: "bang", label: "Bangers", font: "Bangers, cursive" },
+                    { id: "out", label: "Outfit", font: "Outfit, sans-serif" },
+                    { id: "pac", label: "Hand", font: "Pacifico, cursive" },
+                    { id: "sync", label: "Sync", font: "Syncopate, sans-serif" }
                   ].map(f => (
                     <Box
                       key={f.id}
                       onClick={() => handleUpdate({ fontFamily: f.font })}
                       sx={{
-                        px: 1, py: 0.2, borderRadius: "5px", cursor: "pointer", fontSize: "0.65rem", fontWeight: 900,
-                        bgcolor: element.fontFamily === f.font ? "#4f8bff" : "transparent",
-                        color: element.fontFamily === f.font ? "#fff" : "inherit",
-                        transition: "all 0.15s", "&:hover": { bgcolor: element.fontFamily === f.font ? "#4f8bff" : "rgba(79,139,255,0.2)" }
+                        px: 1, py: 0.3, borderRadius: "6px", cursor: "pointer", 
+                        fontSize: "0.6rem", fontWeight: 800, whiteSpace: "nowrap",
+                        fontFamily: f.font,
+                        bgcolor: element.fontFamily === f.font ? "#22d3ee" : "transparent",
+                        color: element.fontFamily === f.font ? "#020617" : "inherit",
+                        transition: "all 0.15s", 
+                        "&:hover": { bgcolor: element.fontFamily === f.font ? "#22d3ee" : "rgba(34,211,238,0.1)" }
                       }}
                     >
                       {f.label}

@@ -1,5 +1,38 @@
 import type { SvgElement } from "../types/svg";
 
+// Shared canvas for measuring text exactly
+let measurementCanvas: HTMLCanvasElement | null = null;
+const getMeasurementContext = () => {
+  if (typeof document === "undefined") return null;
+  if (!measurementCanvas) {
+    measurementCanvas = document.createElement("canvas");
+  }
+  return measurementCanvas.getContext("2d");
+};
+
+export const getTextBounds = (content: string, fontSize: number, fontFamily: string = "Inter, sans-serif") => {
+  const ctx = getMeasurementContext();
+  if (!ctx) {
+    // Fallback if canvas is not available
+    const lines = content.split("\n");
+    const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
+    return { width: longestLine * (fontSize * 0.6), height: lines.length * fontSize * 1.2 };
+  }
+
+  ctx.font = `${fontSize}px ${fontFamily}`;
+  const lines = content.split("\n");
+  let maxWidth = 0;
+  for (const line of lines) {
+    const metrics = ctx.measureText(line);
+    maxWidth = Math.max(maxWidth, metrics.width);
+  }
+
+  return {
+    width: Math.max(20, maxWidth),
+    height: lines.length * fontSize * 1.2
+  };
+};
+
 export interface Bounds {
   x: number;
   y: number;
@@ -27,18 +60,12 @@ export const getElementBounds = (element: SvgElement): Bounds => {
     height = Math.max(2, Math.max(...ys) - minY);
   } else if (element.type === "text") {
     const fs = element.fontSize || 24;
-    // Improved text bounds estimation
-    // 0.6 is a rough average character width ratio for Inter/Sans-serif
-    // This could be further improved by using a canvas context to measure text if needed.
-    const lines = (element.content || "").split("\n");
-    const longestLine = lines.reduce((max, line) => (line.length > max ? line.length : max), 0);
-    const ew = Math.max(20, longestLine * (fs * 0.6));
-    const eh = lines.length * fs * 1.2;
+    const { width: tw, height: th } = getTextBounds(element.content || "", fs);
     
     minX = element.x;
-    minY = element.y; // dominantBaseline="hanging" means y is the top
-    width = ew;
-    height = eh;
+    minY = element.y;
+    width = tw;
+    height = th;
   }
 
   return { x: minX, y: minY, width, height };

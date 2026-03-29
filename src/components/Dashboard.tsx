@@ -5,7 +5,7 @@ import {
 } from "@mui/material";
 import { 
   Plus, Search, Layout, Smartphone, Play, 
-  FileText, Clock, Trash2, Bell, Settings 
+  FileText, Clock, Trash2, Bell, Settings, Pencil 
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { Project, CanvasSize } from "../types/svg";
@@ -22,11 +22,11 @@ interface DashboardProps {
   artboardSize?: { width: number; height: number };
 }
 
-const PRESETS: CanvasSize[] = [
+const PRESETS: (CanvasSize & { mode?: "moodboard" | "designer" })[] = [
+  { label: "Mood Board", width: 2000, height: 2000, mode: "moodboard" },
   { label: "Instagram Story", width: 1080, height: 1920 },
   { label: "Social Post", width: 1080, height: 1080 },
   { label: "Presentation", width: 1920, height: 1080 },
-  { label: "Desktop Wallpaper", width: 2560, height: 1440 },
   { label: "LinkedIn Banner", width: 1584, height: 396 },
 ];
 
@@ -109,15 +109,18 @@ const Dashboard: React.FC<DashboardProps> = ({ projects, onCreateProject, onLoad
             </Grid>
             {PRESETS.map((preset, i) => (
               <Grid size={{ xs: 6, sm: 4, md: 2.4 }} key={i}>
-                 <Card sx={{ borderRadius: "16px", overflow: "hidden", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", transition: "all 0.2s ease", "&:hover": { transform: "translateY(-4px)", borderColor: "#22d3ee", bgcolor: "rgba(255,255,255,0.05)" } }}>
-                    <CardActionArea onClick={() => onCreateProject(`New ${preset.label || "Project"}`, "designer", preset)} sx={{ p: 3, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                       <Box sx={{ p: 2, bgcolor: "rgba(34,211,238,0.08)", borderRadius: "14px", mb: 2 }}>
-                          {(preset.label || "").includes("Story") ? <Smartphone color="#22d3ee" size={20} /> : (preset.label || "").includes("Presentation") ? <Play color="#22d3ee" size={20} /> : <Layout color="#22d3ee" size={20} />}
-                       </Box>
-                       <Typography className="heading-font" sx={{ fontWeight: 700, fontSize: "0.85rem", textAlign: "center" }}>{preset.label}</Typography>
-                       <Typography sx={{ fontSize: "0.7rem", opacity: 0.4, mt: 0.5 }}>{preset.width} × {preset.height} PX</Typography>
-                    </CardActionArea>
-                 </Card>
+                <Card sx={{ borderRadius: "16px", overflow: "hidden", bgcolor: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", transition: "all 0.2s ease", "&:hover": { transform: "translateY(-4px)", borderColor: "#22d3ee", bgcolor: "rgba(255,255,255,0.05)" } }}>
+                   <CardActionArea onClick={() => onCreateProject(`New ${preset.label || "Project"}`, preset.mode || "designer", preset)} sx={{ p: 3, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <Box sx={{ p: 2, bgcolor: "rgba(34,211,238,0.08)", borderRadius: "14px", mb: 2 }}>
+                         {(preset.label || "").includes("Story") ? <Smartphone color="#22d3ee" size={20} /> : 
+                          (preset.label || "").includes("Presentation") ? <Play color="#22d3ee" size={20} /> : 
+                          (preset.label || "").includes("Mood Board") ? <Pencil color="#22d3ee" size={20} /> :
+                          <Layout color="#22d3ee" size={20} />}
+                      </Box>
+                      <Typography className="heading-font" sx={{ fontWeight: 700, fontSize: "0.85rem", textAlign: "center" }}>{preset.label}</Typography>
+                      <Typography sx={{ fontSize: "0.7rem", opacity: 0.4, mt: 0.5 }}>{preset.width} × {preset.height} PX</Typography>
+                   </CardActionArea>
+                </Card>
               </Grid>
             ))}
           </Grid>

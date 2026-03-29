@@ -451,13 +451,18 @@ const Canvas: React.FC<CanvasProps> = ({
           if (h.includes("b")) newH = Math.max(5, (el.height || 0) + dy);
           else { newH = Math.max(5, (el.height || 0) - dy); newY = el.y + dy; }
 
-          // Fix: maintain aspect ratio for image/svg
-          if (el.type === "image" || el.type === "svg") {
+          // Fix: maintain aspect ratio for image/svg/text
+          if (el.type === "image" || el.type === "svg" || el.type === "text") {
             const aspect = (el.width || 1) / (el.height || 1);
             if (newW / newH > aspect) newW = newH * aspect;
             else newH = newW / aspect;
             if (h.includes("l")) newX = (el.x + (el.width || 0)) - newW;
             if (h.includes("t")) newY = (el.y + (el.height || 0)) - newH;
+
+            if (el.type === "text") {
+              const scale = newW / (el.width || 20);
+              updates.fontSize = Math.max(8, Math.round((el.fontSize || 24) * scale));
+            }
           }
           updates.width = newW; updates.height = newH; updates.x = newX; updates.y = newY;
         } else if (h === "p1") { updates.x = (el.x || 0) + dx; updates.y = (el.y || 0) + dy; }
