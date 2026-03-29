@@ -20,6 +20,8 @@ interface CanvasProps {
   onDuplicate: (ids: string[]) => void;
   onBringToFront: (ids: string[]) => void;
   onSendToBack: (ids: string[]) => void;
+  onGroup: (ids: string[]) => void;
+  onUngroup: (ids: string[]) => void;
   onUndo: () => void;
   onRedo: () => void;
   activeTool: string;
@@ -47,6 +49,8 @@ const Canvas: React.FC<CanvasProps> = ({
   onDuplicate,
   onBringToFront,
   onSendToBack,
+  onGroup,
+  onUngroup,
   onUndo,
   onRedo,
   activeTool,
@@ -105,6 +109,12 @@ const Canvas: React.FC<CanvasProps> = ({
       if (e.key.toLowerCase() === "b" && isCtrl) { e.preventDefault(); onSendToBack(selectedIds); return; }
       if (e.key.toLowerCase() === "z" && isCtrl) { e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo(); return; }
       if (e.key.toLowerCase() === "y" && isCtrl) { e.preventDefault(); onRedo(); return; }
+      if (e.key.toLowerCase() === "g" && isCtrl) {
+        e.preventDefault();
+        if (e.shiftKey) onUngroup(selectedIds);
+        else onGroup(selectedIds);
+        return;
+      }
 
       if (!isCtrl) {
         switch (e.key.toLowerCase()) {
@@ -194,6 +204,11 @@ const Canvas: React.FC<CanvasProps> = ({
       setIsPanning(true); setDragInfo({ mode: "move", startX: e.clientX, startY: e.clientY });
       return;
     }
+    if (activeTool === "rect" || activeTool === "circle" || activeTool === "line" || activeTool === "arrow" || activeTool === "section") {
+      const id = onAddElement(activeTool as ShapeType, { x: pos.x, y: pos.y, width: 0, height: 0 });
+      setDragInfo({ mode: "create", id, startX: pos.x, startY: pos.y });
+      return;
+    }
     if (activeTool === "selection" && e.target === svgRef.current) {
       onSelect([]); setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
       setDragInfo({ mode: "select", startX: pos.x, startY: pos.y });
@@ -263,6 +278,22 @@ const Canvas: React.FC<CanvasProps> = ({
         if (el.type === "line" || el.type === "arrow") { updates.x2 = maybeSnap((off.x2 || 0) + dx); updates.y2 = maybeSnap((off.y2 || 0) + dy); }
         else if (el.type === "pencil" && off.points) updates.points = off.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
         return updates;
+      });
+
+      // AUTO-PARENTING ON MOVE (AFTER DRAG END or DURING DRAG)
+      // For performance, we'll do this check after the map
+      selectedIds.forEach(id => {
+         const el = elements.find(e => e.id === id);
+         if (el && el.type !== "section") {
+            const sections = elements.filter(e => e.type === "section" && !selectedIds.includes(e.id));
+            const parentSection = sections.find(s => {
+               const b = getElementBounds(el);
+               const sb = getElementBounds(s);
+               return b.x >= sb.x && b.y >= sb.y && (b.x + b.width) <= (sb.x + sb.width) && (b.y + b.height) <= (sb.y + sb.height);
+            });
+            if (parentSection && el.parentId !== parentSection.id) onUpdateElement(el.id, { parentId: parentSection.id });
+            else if (!parentSection && el.parentId) onUpdateElement(el.id, { parentId: undefined });
+         }
       });
     } else if (dragInfo.mode === "select") {
       const box = { x: dragInfo.startX, y: dragInfo.startY, width: snPos.x - dragInfo.startX, height: snPos.y - dragInfo.startY };
@@ -476,7 +507,7 @@ const Canvas: React.FC<CanvasProps> = ({
         backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.1)"} 1px, transparent 1px)`:"none", 
         backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, 
         backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px`,
-        cursor: isPanning ? "grabbing" : ["rect", "circle", "line", "arrow"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
+        cursor: isPanning ? "grabbing" : ["rect", "circle", "line", "arrow", "section"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
       }} 
       onMouseDown={handleMouseDown} 
       onMouseMove={handleMouseMove} 
@@ -489,7 +520,7 @@ const Canvas: React.FC<CanvasProps> = ({
              <g><rect x={-artboardSize.width / 2} y={-artboardSize.height / 2} width={artboardSize.width} height={artboardSize.height} fill={theme === "dark" ? "#161b22" : "#ffffff"} style={{ filter: "drop-shadow(0 20px 60px rgba(0,0,0,0.4))" }} />
              <path d={`M -10000,-10000 H 10000 V 10000 H -10000 Z M ${-artboardSize.width/2},${-artboardSize.height/2} V ${artboardSize.height/2} H ${artboardSize.width/2} V ${-artboardSize.height/2} Z`} fill={theme==="dark"?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.08)"} fillRule="evenodd" /></g>
           )}
-          {elements.map(el => {
+          {[...elements].sort((a, _b) => (a.type === "section" ? -1 : 1)).map(el => {
             const isSelected = selectedIds.includes(el.id);
             const isEditing = el.id === editingTextId;
             const isHovered = hoveredId === el.id;

@@ -9,6 +9,7 @@ interface HandDrawnElementProps {
   isSelected?: boolean;
   isEditing?: boolean;
   isHovered?: boolean;
+  theme?: "light" | "dark";
 }
 
 export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
@@ -16,6 +17,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
   isSelected,
   isEditing,
   isHovered,
+  theme = "dark",
 }) => {
   if (!element.visible || (element.type === "text" && isEditing)) return null;
 
@@ -169,6 +171,27 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             )}
             {element.type === "path" && element.content && (
               <path d={element.content} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />
+            )}
+            {element.type === "section" && (
+              <g>
+                {/* Main section body */}
+                <rect 
+                  x={element.x} y={element.y} width={element.width || 0} height={element.height || 0} rx={12} 
+                  fill={theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"} 
+                  stroke={theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} 
+                  strokeWidth="1.5"
+                />
+                {/* Header title area */}
+                <g transform={`translate(${element.x + 10}, ${element.y + 10})`}>
+                   <rect x={-4} y={-4} width={(element.name.length * 7) + 20} height={24} rx={6} fill="#4f8bff" />
+                   <text 
+                     x={6} y={13} fill="white" 
+                     style={{ fontSize: "10px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "1px", userSelect: "none" }}
+                   >
+                     {element.name}
+                   </text>
+                </g>
+              </g>
             )}
           </>
         ) : (

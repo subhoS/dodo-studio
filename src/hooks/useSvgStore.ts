@@ -155,20 +155,48 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
 
   const updateElement = useCallback(
     (id: string, updates: Partial<SvgElement>) => {
-      updateAndSave((prev) => prev.map((el) => (el.id === id ? { ...el, ...updates } : el)));
+      updateAndSave((prev) => {
+        const toUpdate = [id];
+        // Recursive children check
+        const findChildren = (pid: string) => {
+          prev.forEach(el => { if (el.parentId === pid) { toUpdate.push(el.id); findChildren(el.id); } });
+        };
+        findChildren(id);
+        
+        return prev.map((el) => {
+          if (!toUpdate.includes(el.id)) return el;
+          // Apply exact updates for the target, but only movement/delta for children if they were dragged?
+          // Actually, if it's a direct update (like color), apply to children too? 
+          // For now, let's just apply to the target. For move, we'll use updateElements.
+          return el.id === id ? { ...el, ...updates } : el;
+        });
+      });
     },
     [updateAndSave],
   );
 
   const updateElements = useCallback(
     (ids: string[], updates: Partial<SvgElement> | ((el: SvgElement) => Partial<SvgElement>)) => {
-      updateAndSave((prev) =>
-        prev.map((el) => {
-          if (!ids.includes(el.id)) return el;
+      updateAndSave((prev) => {
+        const allTargetIds = new Set(ids);
+        
+        // Find all recursive children of targets
+        const findChildren = (pid: string) => {
+          prev.forEach(el => {
+            if (el.parentId === pid && !allTargetIds.has(el.id)) {
+              allTargetIds.add(el.id);
+              findChildren(el.id);
+            }
+          });
+        };
+        ids.forEach(id => findChildren(id));
+
+        return prev.map((el) => {
+          if (!allTargetIds.has(el.id)) return el;
           const up = typeof updates === "function" ? updates(el) : updates;
           return { ...el, ...up };
-        })
-      );
+        });
+      });
     },
     [updateAndSave],
   );
@@ -223,10 +251,74 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
 
   const removeElements = useCallback(
     (ids: string[]) => {
-      updateAndSave((prev) => prev.filter((el) => !ids.includes(el.id)));
+      updateAndSave((prev) => {
+        const toRemove = new Set(ids);
+        // Also remove children of these parents
+        const findChildren = (pid: string) => {
+             prev.forEach(el => { if (el.parentId === pid) { toRemove.add(el.id); findChildren(el.id); } });
+        };
+        ids.forEach(id => findChildren(id));
+        return prev.filter((el) => !toRemove.has(el.id));
+      });
       setSelectedIds([]);
     },
     [updateAndSave],
+  );
+
+  const groupElements = useCallback(
+    (ids: string[]) => {
+      if (ids.length < 2) return;
+      // Step 1: Find bounds of children
+      const current = allElementsRef.current[activeMode] || [];
+      const selected = current.filter(el => ids.includes(el.id));
+      const minX = Math.min(...selected.map(el => el.x));
+      const minY = Math.min(...selected.map(el => el.y));
+      
+      const groupId = `group-${Math.random().toString(36).substring(2, 9)}`;
+      
+      // Step 2: Create a dummy Group element (represented as a transparent rect or just a logical node)
+      // Actually, for DODO, let's treat groups as logical units. 
+      // But we need a parent node to "hold" them.
+      // Let's create a hidden 'section' or similar if we want a naming thing.
+      // For now, let's just use parentId referring to the FIRST element in the list? No, that's messy.
+      // Let's create a "group" node.
+      const groupNode: SvgElement = {
+        id: groupId,
+        type: "section", // We'll use 'section' for grouping too but styled specifically
+        name: `Group ${elements.length / 5 + 1}`,
+        x: minX,
+        y: minY,
+        fill: "transparent",
+        stroke: "transparent",
+        strokeWidth: 0,
+        visible: true,
+        seed: Math.random(),
+        roughness: 0,
+      };
+
+      updateAndSave(prev => {
+        const next = prev.map(el => ids.includes(el.id) ? { ...el, parentId: groupId } : el);
+        return [...next, groupNode];
+      });
+      setSelectedIds([groupId]);
+    },
+    [activeMode, updateAndSave, elements.length]
+  );
+
+  const ungroupElements = useCallback(
+    (ids: string[]) => {
+       updateAndSave(prev => {
+         // If a group node is selected, unparent its children and delete the group node
+         const parentsToDelete = new Set<string>();
+         const next = prev.map(el => {
+           if (ids.includes(el.parentId || "")) return { ...el, parentId: undefined };
+           if (ids.includes(el.id) && el.type === "section") { parentsToDelete.add(el.id); }
+           return el;
+         });
+         return next.filter(el => !parentsToDelete.has(el.id));
+       });
+    },
+    [updateAndSave]
   );
 
   const duplicateElements = useCallback(
@@ -334,6 +426,8 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     toggleLock,
     addPoint,
     finalizeDrawing,
+    groupElements,
+    ungroupElements,
     duplicateElements,
     bringToFront,
     sendToBack,

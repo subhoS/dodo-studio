@@ -7,7 +7,8 @@ export type ShapeType =
   | "text"
   | "path"
   | "image"
-  | "svg";
+  | "svg"
+  | "section";
 
 export interface SvgElement {
   id: string;
@@ -39,4 +40,5 @@ export interface SvgElement {
   cornerRadius?: number;
   bowing?: number;
   locked?: boolean;
+  parentId?: string;
 }

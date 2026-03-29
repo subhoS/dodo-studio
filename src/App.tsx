@@ -23,6 +23,7 @@ import {
   Edit2 as EditIcon,
   Upload as ImportIcon,
   Trash2 as TrashIcon,
+  Layout as SectionIcon,
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import Canvas from "./components/Canvas";
@@ -54,6 +55,8 @@ const App: React.FC = () => {
     clearCanvas,
     undo,
     redo,
+    groupElements,
+    ungroupElements,
     selectedElement,
     projectName,
     setProjectName,
@@ -145,6 +148,7 @@ const App: React.FC = () => {
     { id: "arrow", icon: <ArrowIcon />, label: "ARROW" },
     { id: "pencil", icon: <PencilIcon />, label: "PENCIL" },
     { id: "text", icon: <TextIcon />, label: "TEXT" },
+    { id: "section", icon: <SectionIcon />, label: "SECTION" },
     { id: "import", icon: <ImportIcon />, label: "IMPORT" },
     { id: "grid", icon: <SettingsIcon />, label: "GRID" },
     { id: "layers", icon: <LayersIcon />, label: "LAYERS" },
@@ -236,9 +240,11 @@ const App: React.FC = () => {
             onUpdateElements={updateElements} 
             onAddElement={addElement} 
             onRemoveElements={removeElements} 
-            onDuplicate={(ids)=>duplicateElements(ids)} 
+            onDuplicate={duplicateElements} 
             onBringToFront={bringToFront} 
             onSendToBack={sendToBack} 
+            onGroup={groupElements}
+            onUngroup={ungroupElements}
             onUndo={undo} 
             onRedo={redo} 
             activeTool={activeTool} 

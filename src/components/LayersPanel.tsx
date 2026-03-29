@@ -249,6 +249,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
                 opacity: isDraggedThis ? 0.5 : 1,
                 transition: "background 0.12s, border 0.12s",
                 userSelect: "none",
+                pl: el.parentId ? 4 : 1,
               }}
             >
               {/* Drag handle */}
