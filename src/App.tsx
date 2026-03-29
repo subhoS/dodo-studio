@@ -22,6 +22,7 @@ import {
   Download as SaveIcon,
   Edit2 as EditIcon,
   Upload as ImportIcon,
+  Trash2 as TrashIcon,
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import Canvas from "./components/Canvas";
@@ -50,6 +51,7 @@ const App: React.FC = () => {
     sendToBack,
     reorderElements,
     alignElements,
+    clearCanvas,
     undo,
     redo,
     selectedElement,
@@ -173,7 +175,16 @@ const App: React.FC = () => {
               <EditIcon size={12} style={{ opacity: 0.5 }} />
             </Stack>
           )}
-          <Box component="span" sx={{ opacity: 0.4, fontSize: "0.75rem", fontWeight: 600 }}>• Saved {lastSaved}</Box>
+          <Tooltip title="Clear Canvas">
+            <IconButton 
+              size="small" 
+              onClick={() => { if(window.confirm("Clear all elements? This cannot be undone.")) clearCanvas(); }} 
+              sx={{ color: "rgba(255,79,79,0.7)", ml: 2, p: 0.5 }}
+            >
+              <TrashIcon size={16} />
+            </IconButton>
+          </Tooltip>
+          <Box component="span" sx={{ opacity: 0.4, fontSize: "0.75rem", fontWeight: 600, ml: 1 }}>• Saved {lastSaved}</Box>
         </Stack>
 
         <Stack direction="row" spacing={2} alignItems="center">

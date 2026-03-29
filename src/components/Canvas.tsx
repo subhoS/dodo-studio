@@ -156,6 +156,10 @@ const Canvas: React.FC<CanvasProps> = ({
       setDragInfo({ mode: "create", id, startX: snPos.x, startY: snPos.y }); onSelect([id]);
       return;
     }
+    if (activeTool === "import") {
+      document.getElementById("import-input")?.click();
+      return;
+    }
     if (activeTool === "text") {
       // e.preventDefault() stops the browser from focusing the canvas div on mousedown,
       // which would steal focus from the textarea when it mounts.
@@ -317,11 +321,24 @@ const Canvas: React.FC<CanvasProps> = ({
         updates.rotation = (Math.atan2(snPos.y - cY, snPos.x - cX) * 180 / Math.PI) + 90;
       } else {
         const h = dragInfo.handle;
-        if (h === "br") { updates.width = Math.max(5, (el.width || 0) + dx); updates.height = Math.max(5, (el.height || 0) + dy); }
-        else if (h === "tr") { updates.y = el.y + dy; updates.width = Math.max(5, (el.width || 0) + dx); updates.height = Math.max(5, (el.height || 0) - dy); }
-        else if (h === "bl") { updates.x = el.x + dx; updates.width = Math.max(5, (el.width || 0) - dx); updates.height = Math.max(5, (el.height || 0) + dy); }
-        else if (h === "tl") { updates.x = el.x + dx; updates.y = el.y + dy; updates.width = Math.max(5, (el.width || 0) - dx); updates.height = Math.max(5, (el.height || 0) - dy); }
-        else if (h === "p1") { updates.x = (el.x || 0) + dx; updates.y = (el.y || 0) + dy; }
+        if (!h) return;
+        if (["tl", "tr", "bl", "br"].includes(h)) {
+          let newW = el.width || 0, newH = el.height || 0, newX = el.x, newY = el.y;
+          if (h.includes("r")) newW = Math.max(5, (el.width || 0) + dx);
+          else { newW = Math.max(5, (el.width || 0) - dx); newX = el.x + dx; }
+          if (h.includes("b")) newH = Math.max(5, (el.height || 0) + dy);
+          else { newH = Math.max(5, (el.height || 0) - dy); newY = el.y + dy; }
+
+          // Fix: maintain aspect ratio for image/svg
+          if (el.type === "image" || el.type === "svg") {
+            const aspect = (el.width || 1) / (el.height || 1);
+            if (newW / newH > aspect) newW = newH * aspect;
+            else newH = newW / aspect;
+            if (h.includes("l")) newX = (el.x + (el.width || 0)) - newW;
+            if (h.includes("t")) newY = (el.y + (el.height || 0)) - newH;
+          }
+          updates.width = newW; updates.height = newH; updates.x = newX; updates.y = newY;
+        } else if (h === "p1") { updates.x = (el.x || 0) + dx; updates.y = (el.y || 0) + dy; }
         else if (h === "p2") { updates.x2 = (el.x2 || 0) + dx; updates.y2 = (el.y2 || 0) + dy; }
       }
       onUpdateElement(dragInfo.id, updates);

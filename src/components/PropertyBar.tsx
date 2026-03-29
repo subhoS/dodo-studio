@@ -47,17 +47,6 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
 
   const handleUpdate = (updates: Partial<SvgElement>) => onUpdate(element.id, updates);
 
-  const handleEyeDropper = async () => {
-    if (!(window as any).EyeDropper) {
-      alert("EyeDropper API not supported in this browser.");
-      return;
-    }
-    const dropper = new (window as any).EyeDropper();
-    try {
-      const result = await dropper.open();
-      handleUpdate({ stroke: result.sRGBHex, fill: element.fill !== "transparent" ? result.sRGBHex : "transparent" });
-    } catch (e) {}
-  };
 
   const typeIconName =
     element.type === "rect" ? "Square"
@@ -100,7 +89,7 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
         </Typography>
       </Stack>
 
-      {element.type !== "image" && (
+      {element.type !== "image" && element.type !== "svg" && (
         <>
           <Divider orientation="vertical" flexItem />
           {/* — Color swatches — */}
@@ -122,11 +111,6 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
               </IconButton>
             </Tooltip>
             <input type="color" ref={colorInputRef} style={{ display: "none" }} onChange={(e) => handleUpdate({ stroke: e.target.value, fill: element.fill !== "transparent" ? e.target.value : "transparent" })} />
-            <Tooltip title="Eye Dropper">
-              <IconButton size="small" onClick={handleEyeDropper} sx={{ color: "inherit", opacity: 0.7, p: 0.5 }}>
-                <SafeIcon name="Pipette" size={15} />
-              </IconButton>
-            </Tooltip>
           </Stack>
 
           <Divider orientation="vertical" flexItem />
@@ -142,15 +126,17 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
                 <SafeIcon name={element.fill === "transparent" ? "Ghost" : "PaintBucket"} size={17} />
               </IconButton>
             </Tooltip>
-            <Tooltip title={element.fillStyle === "solid" ? "Rough Fill" : "Solid Fill"}>
-              <IconButton
-                size="small"
-                onClick={() => handleUpdate({ fillStyle: element.fillStyle === "solid" ? "rough" : "solid" })}
-                sx={{ color: element.fillStyle === "solid" ? "#4f8bff" : "inherit", opacity: element.fillStyle === "solid" ? 1 : 0.6, p: 0.5 }}
-              >
-                <SafeIcon name="Layers" size={17} />
-              </IconButton>
-            </Tooltip>
+            {element.type !== "text" && (
+              <Tooltip title={element.fillStyle === "solid" ? "Rough Fill" : "Solid Fill"}>
+                <IconButton
+                  size="small"
+                  onClick={() => handleUpdate({ fillStyle: element.fillStyle === "solid" ? "rough" : "solid" })}
+                  sx={{ color: element.fillStyle === "solid" ? "#4f8bff" : "inherit", opacity: element.fillStyle === "solid" ? 1 : 0.6, p: 0.5 }}
+                >
+                  <SafeIcon name="Layers" size={17} />
+                </IconButton>
+              </Tooltip>
+            )}
           </Stack>
         </>
       )}
