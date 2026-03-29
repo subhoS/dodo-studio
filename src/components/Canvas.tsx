@@ -75,6 +75,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [snappingLines, setSnappingLines] = useState<{ x?: number; y?: number } | null>(null);
 
   const drawingIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -209,6 +210,16 @@ const Canvas: React.FC<CanvasProps> = ({
     if (!dragInfo) return;
     const maybeSnap = (v: number) => (gridEnabled && e.shiftKey) ? snapToGrid(v) : v;
     const snPos = { x: maybeSnap(pos.x), y: maybeSnap(pos.y) };
+
+    // Update snapping lines feedback
+    if (gridEnabled && e.shiftKey) {
+      setSnappingLines({ 
+        x: Math.abs(pos.x - snPos.x) < 5 ? snPos.x : undefined,
+        y: Math.abs(pos.y - snPos.y) < 5 ? snPos.y : undefined
+      });
+    } else {
+      setSnappingLines(null);
+    }
 
     if (dragInfo.mode === "pencil" && drawingIdRef.current) {
       onAddPoint(drawingIdRef.current, pos.x, pos.y);
@@ -394,6 +405,7 @@ const Canvas: React.FC<CanvasProps> = ({
     if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil")) {
       onSetActiveTool("selection");
     }
+    setSnappingLines(null);
     setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null);
   };
 
@@ -618,6 +630,18 @@ const Canvas: React.FC<CanvasProps> = ({
               rx={4}
               style={{ filter: "drop-shadow(0 0 8px rgba(79,139,255,0.2))" }}
             />
+          )}
+
+          {/* SNAPPING GUIDES */}
+          {snappingLines && (
+            <g style={{ pointerEvents: "none" }}>
+              {snappingLines.x !== undefined && (
+                <line x1={snappingLines.x} y1={-10000} x2={snappingLines.x} y2={10000} stroke="#4f8bff" strokeWidth="1" strokeDasharray="5 5" opacity="0.4" />
+              )}
+              {snappingLines.y !== undefined && (
+                <line x1={-10000} y1={snappingLines.y} x2={10000} y2={snappingLines.y} stroke="#4f8bff" strokeWidth="1" strokeDasharray="5 5" opacity="0.4" />
+              )}
+            </g>
           )}
         </g>
 

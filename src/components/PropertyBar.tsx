@@ -35,6 +35,7 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
   onBringToFront,
   onSendToBack,
   onDuplicate,
+  onAlign,
   theme,
 }) => {
   const colorInputRef = useRef<HTMLInputElement>(null);
@@ -113,9 +114,7 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
             <input type="color" ref={colorInputRef} style={{ display: "none" }} onChange={(e) => handleUpdate({ stroke: e.target.value, fill: element.fill !== "transparent" ? e.target.value : "transparent" })} />
           </Stack>
 
-          <Divider orientation="vertical" flexItem />
-
-          {/* — Fill controls — */}
+          {/* — Fill & Shape-specific controls — */}
           <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
             <Tooltip title={element.fill === "transparent" ? "Add Fill" : "Remove Fill"}>
               <IconButton
@@ -137,9 +136,65 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
                 </IconButton>
               </Tooltip>
             )}
+
+            {element.type === "rect" && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <Box sx={{ minWidth: 80, flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: "0.6rem", fontWeight: 900, opacity: 0.5, mb: 0.25 }}>
+                    RADIUS {element.cornerRadius || 0}px
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={element.cornerRadius || 0} min={0} max={50}
+                    onChange={(_, v) => handleUpdate({ cornerRadius: v as number })}
+                    sx={{ color: "#4f8bff", py: 0.75 }}
+                  />
+                </Box>
+              </>
+            )}
+
+            {element.type === "text" && (
+              <>
+                <Divider orientation="vertical" flexItem />
+                <Stack direction="row" spacing={0.5} sx={{ p: 0.5, bgcolor: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", borderRadius: "8px" }}>
+                  {[
+                    { id: "sans", label: "Sans", font: "Inter, sans-serif" },
+                    { id: "serif", label: "Serif", font: "Georgia, serif" },
+                    { id: "hand", label: "Hand", font: "Verdana, sans-serif" }
+                  ].map(f => (
+                    <Box
+                      key={f.id}
+                      onClick={() => handleUpdate({ fontFamily: f.font })}
+                      sx={{
+                        px: 1, py: 0.2, borderRadius: "5px", cursor: "pointer", fontSize: "0.65rem", fontWeight: 900,
+                        bgcolor: element.fontFamily === f.font ? "#4f8bff" : "transparent",
+                        color: element.fontFamily === f.font ? "#fff" : "inherit",
+                        transition: "all 0.15s", "&:hover": { bgcolor: element.fontFamily === f.font ? "#4f8bff" : "rgba(79,139,255,0.2)" }
+                      }}
+                    >
+                      {f.label}
+                    </Box>
+                  ))}
+                </Stack>
+              </>
+            )}
           </Stack>
         </>
       )}
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* — Alignment Actions — */}
+      <Stack direction="row" spacing={0.1} alignItems="center" sx={{ flexShrink: 0 }}>
+        <Tooltip title="Align Left"><IconButton size="small" onClick={() => onAlign(element.id, "left")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignLeft" size={15} /></IconButton></Tooltip>
+        <Tooltip title="Align Center"><IconButton size="small" onClick={() => onAlign(element.id, "center")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignCenter" size={15} /></IconButton></Tooltip>
+        <Tooltip title="Align Right"><IconButton size="small" onClick={() => onAlign(element.id, "right")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignRight" size={15} /></IconButton></Tooltip>
+        <Divider orientation="vertical" flexItem sx={{ height: 14, mx: 0.25, my: "auto" }} />
+        <Tooltip title="Align Top"><IconButton size="small" onClick={() => onAlign(element.id, "top")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignStartVertical" size={15} /></IconButton></Tooltip>
+        <Tooltip title="Align Middle"><IconButton size="small" onClick={() => onAlign(element.id, "v-center")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignCenterVertical" size={15} /></IconButton></Tooltip>
+        <Tooltip title="Align Bottom"><IconButton size="small" onClick={() => onAlign(element.id, "bottom")} sx={{ color: "inherit", p: 0.4 }}><SafeIcon name="AlignEndVertical" size={15} /></IconButton></Tooltip>
+      </Stack>
 
       <Divider orientation="vertical" flexItem />
 
