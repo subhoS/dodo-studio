@@ -1,91 +1,46 @@
-# DODO 🦤
+# 🦤 DODO Studio
 
-A modern SVG drawing and design tool.
+A professional-grade, professional-aesthetic hybrid design tool for and mood-boarding. 
 
-## About
+## ✨ Features
 
-DODO 🦤 is a modern, intuitive drawing and design tool for creators of all levels. Sketch, annotate, and design with ease—right in your browser.
+- **Hybrid Modes**: Toggle between freeform **Mood Board** and structured **Designer** (artboard-based) modes.
+- **Advanced Tools**: Hand-drawn (Rough.js) and solid shapes, lines, arrows, and professional text editing.
+- **Layers Panel**: Full-featured layers management with multi-select, drag-to-reorder, search, visibility, and locking.
+- **Precision Transformations**: Proportional group resizing, shared-center rotation, and snappy alignment.
+- **Assets Import**: Drag-and-drop or select images (PNG, JPG) and SVGs to incorporate into your designs.
+- **Property Editor**: Real-time styling with hachure/solid fills, stroke control, opacity, and layer ordering.
+- **Keyboard Shortcuts**: Professional shortcuts for undo/redo (⌘Z), duplicate (⌘D), group selection, and more.
+- **Glassmorphism UI**: High-fidelity dark/light mode interface with premium blur effects and pixel-perfect icons.
 
-**Tagline:** Draw. Design. DODO.
+## 🚀 Getting Started
 
-**License:** GPL v3 — All modifications and derivatives must remain open source.
+1. **Clone & Install**:
+   ```bash
+   npm install
+   ```
+2. **Launch Dev Server**:
+   ```bash
+   npm run dev
+   ```
+3. **Build for Production**:
+   ```bash
+   npm run build
+   ```
+
+## 🛠 Tech Stack
+
+- **React + Vite**
+- **Rough.js**: Hand-drawn aesthetics.
+- **MUI (Joy UI Inspired)**: Core UI components.
+- **Lucide React**: Vector icons.
+- **Zustand-style state management**: Custom ref-based store for ultra-performant canvas interactions.
+- **Vercel**: Production deployment.
+
+## 🔐 Privacy & Storage
+
+All design data is stored locally in your browser's `localStorage`. No data ever leaves your device unless you explicitly export it.
 
 ---
 
-## License
-
-This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for details.
-
-# React + TypeScript + Vite
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from "eslint-plugin-react-x";
-import reactDom from "eslint-plugin-react-dom";
-
-export default defineConfig([
-  globalIgnores(["dist"]),
-  {
-    files: ["**/*.{ts,tsx}"],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs["recommended-typescript"],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ["./tsconfig.node.json", "./tsconfig.app.json"],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-]);
-```
+**Built with pride at DODO Studio.**

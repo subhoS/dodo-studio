@@ -385,7 +385,7 @@ const Canvas: React.FC<CanvasProps> = ({
       <svg ref={svgRef} width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
         <g transform={`translate(${offset.x*(zoom/100)}, ${offset.y*(zoom / 100)}) scale(${zoom / 100})`}>
           {boardMode === "designer" && (
-             <g><rect x={-artboardSize.width / 2} y={-artboardSize.height / 2} width={artboardSize.width} height={artboardSize.height} fill={theme === "dark" ? "#161b22" : "#ffffff"} style={{ filter: "drop-shadow(0 10px 30px rgba(0,0,0,0.25))" }} />
+             <g><rect x={-artboardSize.width / 2} y={-artboardSize.height / 2} width={artboardSize.width} height={artboardSize.height} fill={theme === "dark" ? "#161b22" : "#ffffff"} style={{ filter: "drop-shadow(0 20px 60px rgba(0,0,0,0.4))" }} />
              <path d={`M -10000,-10000 H 10000 V 10000 H -10000 Z M ${-artboardSize.width/2},${-artboardSize.height/2} V ${artboardSize.height/2} H ${artboardSize.width/2} V ${-artboardSize.height/2} Z`} fill={theme==="dark"?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.08)"} fillRule="evenodd" /></g>
           )}
           {elements.map(el => {

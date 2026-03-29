@@ -66,6 +66,8 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
     : element.type === "text" ? "Type"
     : element.type === "line" ? "Minus"
     : element.type === "arrow" ? "ArrowRight"
+    : element.type === "image" ? "Image"
+    : element.type === "svg" ? "FileCode"
     : "Square";
 
   return (
@@ -98,58 +100,60 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
         </Typography>
       </Stack>
 
-      <Divider orientation="vertical" flexItem />
+      {element.type !== "image" && (
+        <>
+          <Divider orientation="vertical" flexItem />
+          {/* — Color swatches — */}
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+            {colors.map((c) => (
+              <Box
+                key={c}
+                onClick={() => handleUpdate({ stroke: c, fill: element.fill !== "transparent" ? c : "transparent" })}
+                sx={{
+                  width: 20, height: 20, borderRadius: "50%", bgcolor: c, cursor: "pointer",
+                  border: element.stroke === c ? "2px solid #4f8bff" : "2px solid transparent",
+                  boxSizing: "border-box", transition: "all 0.1s", "&:hover": { transform: "scale(1.2)" },
+                }}
+              />
+            ))}
+            <Tooltip title="Custom Color">
+              <IconButton size="small" onClick={() => colorInputRef.current?.click()} sx={{ color: "inherit", opacity: 0.7, p: 0.5 }}>
+                <SafeIcon name="Palette" size={15} />
+              </IconButton>
+            </Tooltip>
+            <input type="color" ref={colorInputRef} style={{ display: "none" }} onChange={(e) => handleUpdate({ stroke: e.target.value, fill: element.fill !== "transparent" ? e.target.value : "transparent" })} />
+            <Tooltip title="Eye Dropper">
+              <IconButton size="small" onClick={handleEyeDropper} sx={{ color: "inherit", opacity: 0.7, p: 0.5 }}>
+                <SafeIcon name="Pipette" size={15} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
 
-      {/* — Color swatches — */}
-      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-        {colors.map((c) => (
-          <Box
-            key={c}
-            onClick={() => handleUpdate({ stroke: c, fill: element.fill !== "transparent" ? c : "transparent" })}
-            sx={{
-              width: 20, height: 20, borderRadius: "50%", bgcolor: c, cursor: "pointer",
-              border: element.stroke === c ? "2px solid #4f8bff" : "2px solid transparent",
-              boxSizing: "border-box", transition: "all 0.1s", "&:hover": { transform: "scale(1.2)" },
-            }}
-          />
-        ))}
-        <Tooltip title="Custom Color">
-          <IconButton size="small" onClick={() => colorInputRef.current?.click()} sx={{ color: "inherit", opacity: 0.7, p: 0.5 }}>
-            <SafeIcon name="Palette" size={15} />
-          </IconButton>
-        </Tooltip>
-        <input type="color" ref={colorInputRef} style={{ display: "none" }} onChange={(e) => handleUpdate({ stroke: e.target.value, fill: element.fill !== "transparent" ? e.target.value : "transparent" })} />
-        <Tooltip title="Eye Dropper">
-          <IconButton size="small" onClick={handleEyeDropper} sx={{ color: "inherit", opacity: 0.7, p: 0.5 }}>
-            <SafeIcon name="Pipette" size={15} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+          <Divider orientation="vertical" flexItem />
 
-      <Divider orientation="vertical" flexItem />
-
-      {/* — Fill controls — */}
-      <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
-        <Tooltip title={element.fill === "transparent" ? "Add Fill" : "Remove Fill"}>
-          <IconButton
-            size="small"
-            onClick={() => handleUpdate({ fill: element.fill === "transparent" ? element.stroke : "transparent" })}
-            sx={{ color: element.fill !== "transparent" ? "#4f8bff" : "inherit", opacity: element.fill !== "transparent" ? 1 : 0.6, p: 0.5 }}
-          >
-            {/* PaintBucket = fill on, Ghost = fill off */}
-            <SafeIcon name={element.fill === "transparent" ? "Ghost" : "PaintBucket"} size={17} />
-          </IconButton>
-        </Tooltip>
-        <Tooltip title={element.fillStyle === "solid" ? "Rough Fill" : "Solid Fill"}>
-          <IconButton
-            size="small"
-            onClick={() => handleUpdate({ fillStyle: element.fillStyle === "solid" ? "rough" : "solid" })}
-            sx={{ color: element.fillStyle === "solid" ? "#4f8bff" : "inherit", opacity: element.fillStyle === "solid" ? 1 : 0.6, p: 0.5 }}
-          >
-            <SafeIcon name="Layers" size={17} />
-          </IconButton>
-        </Tooltip>
-      </Stack>
+          {/* — Fill controls — */}
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+            <Tooltip title={element.fill === "transparent" ? "Add Fill" : "Remove Fill"}>
+              <IconButton
+                size="small"
+                onClick={() => handleUpdate({ fill: element.fill === "transparent" ? element.stroke : "transparent" })}
+                sx={{ color: element.fill !== "transparent" ? "#4f8bff" : "inherit", opacity: element.fill !== "transparent" ? 1 : 0.6, p: 0.5 }}
+              >
+                <SafeIcon name={element.fill === "transparent" ? "Ghost" : "PaintBucket"} size={17} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title={element.fillStyle === "solid" ? "Rough Fill" : "Solid Fill"}>
+              <IconButton
+                size="small"
+                onClick={() => handleUpdate({ fillStyle: element.fillStyle === "solid" ? "rough" : "solid" })}
+                sx={{ color: element.fillStyle === "solid" ? "#4f8bff" : "inherit", opacity: element.fillStyle === "solid" ? 1 : 0.6, p: 0.5 }}
+              >
+                <SafeIcon name="Layers" size={17} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        </>
+      )}
 
       <Divider orientation="vertical" flexItem />
 

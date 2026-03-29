@@ -135,12 +135,46 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             {element.type === "pencil" && element.points && (
               <polyline points={element.points.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={element.stroke} strokeWidth={element.strokeWidth} />
             )}
+            {element.type === "image" && element.url && (
+              <image 
+                href={element.url} 
+                x={element.x} 
+                y={element.y} 
+                width={element.width} 
+                height={element.height} 
+                preserveAspectRatio="xMidYMid meet"
+              />
+            )}
+            {element.type === "svg" && element.svgContent && (
+              <g 
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/100}, ${(element.height||100)/100})`}
+                dangerouslySetInnerHTML={{ __html: element.svgContent }} 
+              />
+            )}
             {element.type === "path" && element.content && (
               <path d={element.content} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />
             )}
           </>
         ) : (
-          paths.map((p: any, i: number) => <path key={`${element.id}-${i}`} d={p.d} fill={p.fill || "none"} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeDasharray={p.strokeDasharray} />)
+          <>
+            {element.type === "image" && element.url && (
+              <image 
+                href={element.url} 
+                x={element.x} 
+                y={element.y} 
+                width={element.width} 
+                height={element.height} 
+                preserveAspectRatio="xMidYMid meet"
+              />
+            )}
+            {element.type === "svg" && element.svgContent && (
+              <g 
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/100}, ${(element.height||100)/100})`}
+                dangerouslySetInnerHTML={{ __html: element.svgContent }} 
+              />
+            )}
+            {paths.map((p: any, i: number) => <path key={`${element.id}-${i}`} d={p.d} fill={p.fill || "none"} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeDasharray={p.strokeDasharray} />)}
+          </>
         )}
       </g>
     </g>

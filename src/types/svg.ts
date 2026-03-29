@@ -5,7 +5,9 @@ export type ShapeType =
   | "line"
   | "arrow"
   | "text"
-  | "path";
+  | "path"
+  | "image"
+  | "svg";
 
 export interface SvgElement {
   id: string;
@@ -14,11 +16,11 @@ export interface SvgElement {
   y: number;
   width?: number;
   height?: number;
-  radius?: number;
+  radius?: number; // legacy
   x2?: number;
   y2?: number;
   fill: string;
-  fillStyle?: "rough" | "solid";
+  fillStyle?: "rough" | "solid" | "hachure";
   stroke: string;
   strokeWidth: number;
   roughness: number;
@@ -27,6 +29,8 @@ export interface SvgElement {
   name: string;
   points?: { x: number; y: number }[];
   content?: string;
+  svgContent?: string; // for imported SVG raw string
+  url?: string; // for imported images (data URL)
   opacity?: number;
   strokeStyle?: "solid" | "dashed" | "dotted";
   fontSize?: number;

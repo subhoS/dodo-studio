@@ -5,6 +5,7 @@ import {
   IconButton,
   Stack,
   Button,
+  Tooltip,
 } from "@mui/material";
 import {
   MousePointer2 as SelectionIcon,
@@ -20,6 +21,7 @@ import {
   ArrowRight as ArrowIcon,
   Download as SaveIcon,
   Edit2 as EditIcon,
+  Upload as ImportIcon,
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import Canvas from "./components/Canvas";
@@ -110,6 +112,29 @@ const App: React.FC = () => {
     img.src = url;
   };
 
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (file.type === "image/svg+xml") {
+        // Simple SVG extraction: just the content inside <svg> if possible, or use as is
+        let svgData = content;
+        if (content.includes("<svg")) {
+          const match = content.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
+          if (match) svgData = match[1];
+        }
+        addElement("svg", { svgContent: svgData, name: file.name, width: 200, height: 200 });
+      } else {
+        addElement("image", { url: content, name: file.name, width: 200, height: 200 });
+      }
+    };
+    if (file.type === "image/svg+xml") reader.readAsText(file);
+    else reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
   const toolbarTools = [
     { id: "selection", icon: <SelectionIcon />, label: "SELECT" },
     { id: "rect", icon: <RectIcon />, label: "RECT" },
@@ -118,6 +143,7 @@ const App: React.FC = () => {
     { id: "arrow", icon: <ArrowIcon />, label: "ARROW" },
     { id: "pencil", icon: <PencilIcon />, label: "PENCIL" },
     { id: "text", icon: <TextIcon />, label: "TEXT" },
+    { id: "import", icon: <ImportIcon />, label: "IMPORT" },
     { id: "grid", icon: <SettingsIcon />, label: "GRID" },
     { id: "layers", icon: <LayersIcon />, label: "LAYERS" },
   ];
@@ -127,8 +153,8 @@ const App: React.FC = () => {
   const subTextColor = theme === "dark" ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.85)";
 
   return (
-    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: theme === "dark" ? "#0b0e14" : "#ffffff", color: textColor, overflow: "hidden" }}>
-      <Box sx={{ height: 64, px: 3, display: "flex", alignItems: "center", borderBottom: `1px solid ${borderColor}`, bgcolor: theme === "dark" ? "rgba(11, 14, 20, 0.8)" : "rgba(255, 255, 255, 0.8)", backdropFilter: "blur(12px)", zIndex: 1100 }}>
+    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: theme === "dark" ? "#0b0e14" : "#f0f2f5", color: textColor, overflow: "hidden" }}>
+      <Box className="mui-glass-panel" sx={{ height: 64, px: 3, display: "flex", alignItems: "center", borderBottom: `1px solid ${borderColor}`, zIndex: 1100 }}>
         <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mr: 4 }}>
           <Box sx={{ width: 36, height: 36, borderRadius: "10px", background: "linear-gradient(135deg, #4f8bff 0%, #3d6edb 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>🦤</Box>
           <Typography variant="h6" sx={{ fontWeight: 900, background: "linear-gradient(90deg, #4f8bff, #8a63ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing:"-1px" }}>DODO</Typography>
@@ -158,31 +184,34 @@ const App: React.FC = () => {
       </Box>
 
       <Box sx={{ flexGrow: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <Box sx={{ width: 80, borderRight: `1px solid ${borderColor}`, bgcolor: theme === "dark" ? "rgba(11, 14, 20, 0.85)" : "rgba(255, 255, 255, 0.85)", backdropFilter: "blur(20px)", display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1 }}>
+        <Box className="mui-glass-panel" sx={{ width: 80, borderRight: `1px solid ${borderColor}`, display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1 }}>
           {toolbarTools.map((tool) => {
             const isActive = activeTool === tool.id || (tool.id === "layers" && showLayers) || (tool.id === "grid" && gridEnabled);
             return (
-              <IconButton 
-                key={tool.id} 
-                onClick={() => { 
-                  if (tool.id === "layers") setShowLayers(!showLayers); 
-                  else if (tool.id === "grid") setGridEnabled(!gridEnabled); 
-                  else setActiveTool(tool.id); 
-                }} 
-                sx={{ 
-                  flexDirection: "column", 
-                  width: 64, height: 64, 
-                  borderRadius: 3, 
-                  color: isActive ? "#4f8bff" : subTextColor, 
-                  bgcolor: isActive ? "rgba(79, 139, 255, 0.15)" : "transparent",
-                  border: isActive ? "1px solid rgba(79, 139, 255, 0.3)" : "1px solid transparent",
-                  transition: "all 0.2s"
-                }}>
-                {React.cloneElement(tool.icon as any, { size: 22 })}
-                <Typography sx={{ fontSize: "0.6rem", fontWeight: 900, mt: 0.5 }}>{tool.label}</Typography>
-              </IconButton>
+              <Tooltip key={tool.id} title={tool.label} placement="right" arrow>
+                <IconButton 
+                  onClick={() => { 
+                    if (tool.id === "layers") setShowLayers(!showLayers); 
+                    else if (tool.id === "grid") setGridEnabled(!gridEnabled); 
+                    else if (tool.id === "import") document.getElementById("import-input")?.click();
+                    else setActiveTool(tool.id); 
+                  }} 
+                  sx={{ 
+                    flexDirection: "column", 
+                    width: 56, height: 56, 
+                    borderRadius: 2, 
+                    color: isActive ? "#4f8bff" : subTextColor, 
+                    bgcolor: isActive ? "rgba(79, 139, 255, 0.12)" : "transparent",
+                    transition: "all 0.2s",
+                    "&:hover": { bgcolor: isActive ? "rgba(79, 139, 255, 0.2)" : "rgba(255,255,255,0.05)" }
+                  }}>
+                  {React.cloneElement(tool.icon as any, { size: 20 })}
+                  <Typography sx={{ fontSize: "0.55rem", fontWeight: 900, mt: 0.5 }}>{tool.label.slice(0, 10)}</Typography>
+                </IconButton>
+              </Tooltip>
             );
           })}
+          <input id="import-input" type="file" accept="image/*,.svg" style={{ display: "none" }} onChange={handleImport} />
         </Box>
 
         <Box sx={{ flexGrow: 1, position: "relative" }}>
