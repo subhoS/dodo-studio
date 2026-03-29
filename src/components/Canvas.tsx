@@ -22,16 +22,17 @@ interface CanvasProps {
   onSendToBack: (ids: string[]) => void;
   onGroup: (ids: string[]) => void;
   onUngroup: (ids: string[]) => void;
+  onImportFile: (file: File, x?: number, y?: number) => void;
   onUndo: () => void;
   onRedo: () => void;
   activeTool: string;
   onSetActiveTool: (tool: string) => void;
   zoom: number;
-  onUpdateZoom: (delta: number) => void;
   theme: "light" | "dark";
   gridEnabled?: boolean;
-  boardMode?: "moodboard" | "designer";
+  activeMode?: "moodboard" | "designer";
   artboardSize?: { width: number; height: number };
+  onUpdateZoom: (val: number, isAbsolute?: boolean) => void;
 }
 
 type DragMode = "move" | "create" | "resize" | "select" | "pencil" | "group-resize" | "group-rotate";
@@ -51,6 +52,7 @@ const Canvas: React.FC<CanvasProps> = ({
   onSendToBack,
   onGroup,
   onUngroup,
+  onImportFile,
   onUndo,
   onRedo,
   activeTool,
@@ -59,7 +61,7 @@ const Canvas: React.FC<CanvasProps> = ({
   onUpdateZoom,
   theme,
   gridEnabled = true,
-  boardMode = "moodboard",
+  activeMode = "moodboard",
   artboardSize = { width: 1080, height: 1080 },
 }) => {
   const [dragInfo, setDragInfo] = useState<{
@@ -87,10 +89,47 @@ const Canvas: React.FC<CanvasProps> = ({
   // Fix #1: track whether the text element being edited was just created (vs double-clicked existing)
   const isNewTextRef = useRef(false);
 
-  // Fix #7: reset pan when mode changes so the canvas re-centres
+  const fitToScreen = useCallback(() => {
+    if (!svgRef.current?.parentElement) return;
+    const padding = 60;
+    const container = svgRef.current.parentElement.getBoundingClientRect();
+    const availableW = container.width - padding * 2;
+    const availableH = container.height - padding * 2;
+    
+    const scaleW = availableW / artboardSize.width;
+    const scaleH = availableH / artboardSize.height;
+    const idealZoom = Math.floor(Math.min(scaleW, scaleH) * 100);
+    
+    // Center the (0,0) point (which is artboard center) in the center of container
+    const centerX = container.width / 2;
+    const centerY = container.height / 2;
+    
+    // In our coordinate system: ScreenX = (SVG_X + offset.x) * (zoom/100)
+    // We want SVG_0 to map to centerX: centerX = (0 + offset.x) * (idealZoom/100)
+    const newOffsetX = centerX / (idealZoom / 100);
+    const newOffsetY = centerY / (idealZoom / 100);
+    
+    setOffset({ x: newOffsetX, y: newOffsetY });
+    onUpdateZoom(idealZoom, true);
+  }, [artboardSize.width, artboardSize.height, onUpdateZoom]);
+
   useEffect(() => {
-    setOffset({ x: 0, y: 0 });
-  }, [boardMode]);
+    const handleFit = () => fitToScreen();
+    window.addEventListener("fit-to-screen", handleFit);
+    window.addEventListener("resize", handleFit);
+    return () => {
+      window.removeEventListener("fit-to-screen", handleFit);
+      window.removeEventListener("resize", handleFit);
+    };
+  }, [fitToScreen]);
+
+  useEffect(() => {
+    if (activeMode === "designer") {
+      fitToScreen();
+    } else {
+      setOffset({ x: 0, y: 0 });
+    }
+  }, [activeMode]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -495,18 +534,31 @@ const Canvas: React.FC<CanvasProps> = ({
       </g>
     );
   };
-
   const editingEl = elements.find(el => el.id === editingTextId);
 
   return (
     <Box 
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files?.[0];
+        if (file && onImportFile) {
+          const rect = svgRef.current?.getBoundingClientRect();
+          if (rect) {
+             const x = (e.clientX - rect.left) / (zoom / 100) - offset.x;
+             const y = (e.clientY - rect.top) / (zoom / 100) - offset.y;
+             onImportFile(file, x, y);
+          }
+        }
+      }}
       sx={{ 
         width:"100%", height:"100%", 
-        bgcolor: theme==="dark"?"#0b0e14":"#ffffff", 
+        bgcolor: theme === "dark" ? "#121417" : "#edeff2", 
         position:"relative", overflow:"hidden", 
-        backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.1)"} 1px, transparent 1px)`:"none", 
+        backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.06)":"rgba(0,0,0,0.08)"} 1px, transparent 1px)`:"none", 
         backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, 
         backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px`,
+        transition: "background-color 0.3s ease",
         cursor: isPanning ? "grabbing" : ["rect", "circle", "line", "arrow", "section"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
       }} 
       onMouseDown={handleMouseDown} 
@@ -515,21 +567,53 @@ const Canvas: React.FC<CanvasProps> = ({
       onWheel={handleWheel}
     >
       <svg ref={svgRef} width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+        <defs>
+          <clipPath id="artboard-clip">
+            <rect 
+              x={-artboardSize.width / 2} y={-artboardSize.height / 2} 
+              width={artboardSize.width} height={artboardSize.height} 
+            />
+          </clipPath>
+        </defs>
+
         <g transform={`translate(${offset.x*(zoom/100)}, ${offset.y*(zoom / 100)}) scale(${zoom / 100})`}>
-          {boardMode === "designer" && (
-             <g><rect x={-artboardSize.width / 2} y={-artboardSize.height / 2} width={artboardSize.width} height={artboardSize.height} fill={theme === "dark" ? "#161b22" : "#ffffff"} style={{ filter: "drop-shadow(0 20px 60px rgba(0,0,0,0.4))" }} />
-             <path d={`M -10000,-10000 H 10000 V 10000 H -10000 Z M ${-artboardSize.width/2},${-artboardSize.height/2} V ${artboardSize.height/2} H ${artboardSize.width/2} V ${-artboardSize.height/2} Z`} fill={theme==="dark"?"rgba(0,0,0,0.5)":"rgba(0,0,0,0.08)"} fillRule="evenodd" /></g>
+          {activeMode === "designer" && (
+             <g>
+               {/* Background masking (Gray out area outside artboard) */}
+               <path 
+                 d={`M -10000,-10000 H 10000 V 10000 H -10000 Z M ${-artboardSize.width/2},${-artboardSize.height/2} V ${artboardSize.height/2} H ${artboardSize.width/2} V ${-artboardSize.height/2} Z`} 
+                 fill={theme==="dark"?"rgba(0,0,0,0.3)":"rgba(0,0,0,0.04)"} 
+                 fillRule="evenodd" 
+                 style={{ pointerEvents: "none" }}
+               />
+               <rect 
+                 x={-artboardSize.width / 2} y={-artboardSize.height / 2} 
+                 width={artboardSize.width} height={artboardSize.height} 
+                 fill={theme === "dark" ? "#1a1d21" : "#ffffff"} 
+                 style={{ filter: "drop-shadow(0 10px 40px rgba(0,0,0,0.2))" }} 
+               />
+             </g>
           )}
-          {[...elements].sort((a, _b) => (a.type === "section" ? -1 : 1)).map(el => {
-            const isSelected = selectedIds.includes(el.id);
-            const isEditing = el.id === editingTextId;
-            const isHovered = hoveredId === el.id;
-            return (
-              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { if (el.locked) return; e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text" && !el.locked){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: el.locked ? "not-allowed" : activeTool==="selection"?"pointer":"default" }}>
-                <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} isHovered={isHovered} />
-                {isSelected && selectedIds.length === 1 && renderHandles(el)}
-              </g>
-            );
+
+          <g clipPath={activeMode === "designer" ? "url(#artboard-clip)" : undefined}>
+            {[...elements].sort((a, _b) => (a.type === "section" ? -1 : 1)).map(el => {
+              const isSelected = selectedIds.includes(el.id);
+              const isEditing = el.id === editingTextId;
+              const isHovered = hoveredId === el.id;
+              return (
+                <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { if (el.locked) return; e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text" && !el.locked){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: el.locked ? "not-allowed" : activeTool==="selection"?"pointer":"default" }}>
+                  <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} isHovered={isHovered} theme={theme} />
+                  {/* We don't render handles inside the clip group because they should be visible outside */}
+                </g>
+              );
+            })}
+          </g>
+
+          {/* Render UI elements (Handles, Selection Box) OUTSIDE the clip group so they remain visible */}
+          {elements.map(el => {
+             const isSelected = selectedIds.includes(el.id);
+             if (!isSelected || selectedIds.length > 1) return null;
+             return <g key={`handles-${el.id}`}>{renderHandles(el)}</g>;
           })}
 
           {/* ── Multi-selection group bounding box ── */}

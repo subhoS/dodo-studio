@@ -44,7 +44,7 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
   // Explicit text color so all "inherit" icons render correctly on both themes
   const textColor = theme === "dark" ? "#ffffff" : "#000000";
 
-  const colors = ["#f6f8fa", "#4f8bff", "#ff7b72", "#79c0ff", "#d29922", "#3fb950", "#a5d6ff"];
+  const colors = ["#ffffff", "#22d3ee", "#ff2e63", "#38bdf8", "#fbbf24", "#4ade80", "#a78bfa"];
 
   const handleUpdate = (updates: Partial<SvgElement>) => onUpdate(element.id, updates);
 
@@ -83,9 +83,9 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
       }}
     >
       {/* — Element type badge — */}
-      <Stack direction="row" alignItems="center" sx={{ color: "#4f8bff", gap: 1, mr: 0.5, flexShrink: 0 }}>
+      <Stack direction="row" alignItems="center" sx={{ color: "#22d3ee", gap: 1, mr: 0.5, flexShrink: 0 }}>
         <SafeIcon name={typeIconName} size={15} />
-        <Typography sx={{ fontSize: "0.75rem", fontWeight: 900, textTransform: "uppercase", letterSpacing: 1 }}>
+        <Typography className="heading-font" sx={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>
           {element.type}
         </Typography>
       </Stack>

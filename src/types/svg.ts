@@ -42,3 +42,19 @@ export interface SvgElement {
   locked?: boolean;
   parentId?: string;
 }
+
+export interface CanvasSize {
+  width: number;
+  height: number;
+  label?: string;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  elements: SvgElement[];
+  mode: "moodboard" | "designer";
+  artboardSize: CanvasSize;
+  lastModified: number;
+  thumbnail?: string;
+}

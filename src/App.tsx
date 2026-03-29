@@ -1,89 +1,77 @@
 import React, { useState, useEffect } from "react";
-import {
-  Box,
-  Typography,
-  IconButton,
-  Stack,
-  Button,
-  Tooltip,
+import { 
+  Box, IconButton, Tooltip, Stack, Typography, Button, Divider 
 } from "@mui/material";
-import {
-  MousePointer2 as SelectionIcon,
-  Square as RectIcon,
-  Circle as CircleIcon,
-  Pencil as PencilIcon,
-  Type as TextIcon,
-  Layers as LayersIcon,
-  Settings as SettingsIcon,
-  Sun as LightModeIcon,
-  Moon as DarkModeIcon,
-  Minus as LineIcon,
-  ArrowRight as ArrowIcon,
-  Download as SaveIcon,
-  Edit2 as EditIcon,
-  Upload as ImportIcon,
-  Trash2 as TrashIcon,
-  Layout as SectionIcon,
+import { 
+  Square, Circle, MousePointer2, Pencil, Type, Layers as LayersIcon, 
+  Minus as LineIcon, ArrowRight as ArrowIcon, Edit2 as EditIcon, 
+  Upload as ImportIcon, Trash2 as TrashIcon, Maximize, Grid as GridIcon,
+  Sun as LightModeIcon, Moon as DarkModeIcon, 
+  ChevronLeft, Share2, Download, User
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
+import DodoLogo from "./components/DodoLogo";
 import Canvas from "./components/Canvas";
 import PropertyBar from "./components/PropertyBar";
 import LayersPanel from "./components/LayersPanel";
+import ShortcutsModal from "./components/ShortcutsModal";
+import Dashboard from "./components/Dashboard";
 
 const App: React.FC = () => {
-  const [boardMode, setBoardMode] = useState<"moodboard" | "designer">("moodboard");
-  const [artboardSize] = useState({ width: 1080, height: 1080 });
-  const [lastSaved, setLastSaved] = useState<string>("Just now");
+  const { 
+    elements, activeProject, projects,
+    createProject, loadProject, deleteProject, updateProjectName,
+    addElement, updateElement, updateElements, removeElements, 
+    duplicateElements, bringToFront, sendToBack, 
+    reorderElements, groupElements, ungroupElements, alignElements, 
+    toggleVisibility, toggleLock,
+    addPoint, finalizeDrawing,
+    undo, redo, clearCanvas,
+    selectedIds, setSelectedIds,
+    selectedElement
+  } = useSvgStore();
 
-  const {
-    elements,
-    selectedIds,
-    setSelectedIds,
-    addElement,
-    updateElement,
-    updateElements,
-    removeElements,
-    toggleVisibility,
-    toggleLock,
-    addPoint,
-    finalizeDrawing,
-    duplicateElements,
-    bringToFront,
-    sendToBack,
-    reorderElements,
-    alignElements,
-    clearCanvas,
-    undo,
-    redo,
-    groupElements,
-    ungroupElements,
-    selectedElement,
-    projectName,
-    setProjectName,
-  } = useSvgStore(boardMode);
-
-  const [gridEnabled, setGridEnabled] = useState(true);
   const [activeTool, setActiveTool] = useState("selection");
-  const [zoom, setZoom] = useState(100);
   const [showLayers, setShowLayers] = useState(false);
+  const [gridEnabled, setGridEnabled] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
+  const [zoom, setZoom] = useState(100);
+  const [view, setView] = useState<"dashboard" | "editor">("dashboard");
   const [isEditingName, setIsEditingName] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
-  // Fix #7: reset zoom when switching modes so canvas feels fresh
+  const activeMode = activeProject?.mode || "designer";
+  const artboardSize = activeProject?.artboardSize || { width: 1000, height: 1000 };
+  const projectName = activeProject?.name || "Untitled";
+
   useEffect(() => {
-    setZoom(100);
-  }, [boardMode]);
+    if (activeProject) {
+      setView("editor");
+      setActiveTool("selection");
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("fit-to-screen"));
+      }, 50);
+    } else {
+      setView("dashboard");
+    }
+  }, [activeProject?.id, artboardSize.width, artboardSize.height]);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setLastSaved(new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-    }, 60000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const handleZoom = (delta: number) => {
-    setZoom((prev) => Math.min(200, Math.max(10, prev + delta)));
+  const handleZoom = (val: number, isAbsolute = false) => {
+    setZoom(prev => {
+      const next = isAbsolute ? val : prev + val;
+      return Math.min(Math.max(next, 5), 800);
+    });
   };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "?" && !isEditingName) {
+        setShowShortcuts(prev => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isEditingName]);
 
   const handleExportPNG = async () => {
     const svgElement = document.querySelector("svg");
@@ -91,26 +79,33 @@ const App: React.FC = () => {
     const exportSvg = svgElement.cloneNode(true) as SVGSVGElement;
     const contentGroup = exportSvg.querySelector("g");
     if (!contentGroup) return;
-    let width = boardMode === "designer" ? artboardSize.width : 2000;
-    let height = boardMode === "designer" ? artboardSize.height : 1500;
-    const vb = boardMode === "designer" ? `${-width/2} ${-height/2} ${width} ${height}` : `0 0 ${width} ${height}`;
+
+    const scale = 2; // 2x for High DPI
+    let width = (activeMode === "designer" ? artboardSize.width : 2000) * scale;
+    let height = (activeMode === "designer" ? artboardSize.height : 1500) * scale;
+
+    const vb = activeMode === "designer" ? `${-artboardSize.width / 2} ${-artboardSize.height / 2} ${artboardSize.width} ${artboardSize.height}` : `0 0 2000 1500`;
     exportSvg.setAttribute("viewBox", vb);
+
     const canvas = document.createElement("canvas");
     canvas.width = width; canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
+    ctx.scale(scale, scale);
     const img = new Image();
     const svgData = new XMLSerializer().serializeToString(exportSvg);
     const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(svgBlob);
+
     img.onload = () => {
-      ctx.fillStyle = theme === "dark" ? "#0b0e14" : "#ffffff";
-      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = theme === "dark" ? "#020617" : "#ffffff";
+      ctx.fillRect(0, 0, width / scale, height / scale);
       ctx.drawImage(img, 0, 0);
       const pngUrl = canvas.toDataURL("image/png");
       const link = document.createElement("a");
       link.href = pngUrl;
-      link.download = `${projectName}.png`;
+      link.download = `${projectName}_2x.png`;
       link.click();
       URL.revokeObjectURL(url);
     };
@@ -119,114 +114,156 @@ const App: React.FC = () => {
 
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) handleImportFile(file);
+    e.target.value = "";
+  };
+
+  const handleImportFile = (file: File) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
       if (file.type === "image/svg+xml") {
-        // Simple SVG extraction: just the content inside <svg> if possible, or use as is
-        let svgData = content;
-        if (content.includes("<svg")) {
-          const match = content.match(/<svg[^>]*>([\s\S]*?)<\/svg>/i);
-          if (match) svgData = match[1];
-        }
-        addElement("svg", { svgContent: svgData, name: file.name, width: 200, height: 200 });
+        addElement("svg", { content, name: file.name });
       } else {
-        addElement("image", { url: content, name: file.name, width: 200, height: 200 });
+        addElement("image", { content, name: file.name });
       }
     };
     if (file.type === "image/svg+xml") reader.readAsText(file);
     else reader.readAsDataURL(file);
-    e.target.value = "";
   };
 
   const toolbarTools = [
-    { id: "selection", icon: <SelectionIcon />, label: "SELECT" },
-    { id: "rect", icon: <RectIcon />, label: "RECT" },
-    { id: "circle", icon: <CircleIcon />, label: "CIRCLE" },
-    { id: "line", icon: <LineIcon />, label: "LINE" },
-    { id: "arrow", icon: <ArrowIcon />, label: "ARROW" },
-    { id: "pencil", icon: <PencilIcon />, label: "PENCIL" },
-    { id: "text", icon: <TextIcon />, label: "TEXT" },
-    { id: "section", icon: <SectionIcon />, label: "SECTION" },
-    { id: "import", icon: <ImportIcon />, label: "IMPORT" },
-    { id: "grid", icon: <SettingsIcon />, label: "GRID" },
-    { id: "layers", icon: <LayersIcon />, label: "LAYERS" },
+    { id: "selection", label: "Select (V)", icon: <MousePointer2 /> },
+    { id: "rect", label: "Rectangle (R)", icon: <Square /> },
+    { id: "circle", label: "Circle (O)", icon: <Circle /> },
+    { id: "line", label: "Line (L)", icon: <LineIcon /> },
+    { id: "arrow", label: "Arrow (A)", icon: <ArrowIcon /> },
+    { id: "pencil", label: "Pencil (P)", icon: <Pencil /> },
+    { id: "text", label: "Text (T)", icon: <Type /> },
+    { id: "section", label: "Section (S)", icon: <Maximize /> },
+    { id: "import", label: "Import (I)", icon: <ImportIcon /> },
+    { id: "grid", label: "Grid (G)", icon: <GridIcon /> },
+    { id: "layers", label: "Layers", icon: <LayersIcon /> },
   ];
 
-  const borderColor = theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.1)";
-  const textColor = theme === "dark" ? "#ffffff" : "#000000";
-  const subTextColor = theme === "dark" ? "rgba(255, 255, 255, 0.7)" : "rgba(0, 0, 0, 0.85)";
+  if (view === "dashboard") {
+    return (
+      <Dashboard 
+        projects={projects} 
+        onCreateProject={createProject} 
+        onLoadProject={loadProject} 
+        onDeleteProject={deleteProject}
+        theme={theme}
+      />
+    );
+  }
 
   return (
-    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: theme === "dark" ? "#0b0e14" : "#f0f2f5", color: textColor, overflow: "hidden" }}>
-      <Box className="mui-glass-panel" sx={{ height: 64, px: 3, display: "flex", alignItems: "center", borderBottom: `1px solid ${borderColor}`, zIndex: 1100 }}>
-        <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mr: 4 }}>
-          <Box sx={{ width: 36, height: 36, borderRadius: "10px", background: "linear-gradient(135deg, #4f8bff 0%, #3d6edb 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.2rem" }}>🦤</Box>
-          <Typography variant="h6" sx={{ fontWeight: 900, background: "linear-gradient(90deg, #4f8bff, #8a63ff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", letterSpacing:"-1px" }}>DODO</Typography>
-        </Stack>
-        <Stack direction="row" spacing={1} sx={{ ml: 4, alignItems: "center" }}>
-          <Button variant={boardMode === "moodboard" ? "contained" : "text"} size="small" onClick={() => setBoardMode("moodboard")} startIcon={<PencilIcon size={16} />} sx={{ borderRadius: 2, textTransform: "none", fontWeight:800, bgcolor: boardMode === "moodboard" ? "#4f8bff" : "transparent", color: boardMode === "moodboard" ? "#fff" : "inherit" }}>Mood Board</Button>
-          <Button variant={boardMode === "designer" ? "contained" : "text"} size="small" onClick={() => setBoardMode("designer")} startIcon={<LayersIcon size={16} />} sx={{ borderRadius: 2, textTransform: "none", fontWeight:800, bgcolor: boardMode === "designer" ? "#ffd33d" : "transparent", color: boardMode === "designer" ? "#000" : "inherit" }}>Designer</Button>
-        </Stack>
-        
-        <Stack direction="row" alignItems="center" sx={{ flexGrow: 1, ml: 4, gap: 1 }}>
-          {isEditingName ? (
-            <input autoFocus value={projectName} onChange={(e) => setProjectName(e.target.value)} onBlur={() => setIsEditingName(false)} onKeyDown={(e) => e.key === "Enter" && setIsEditingName(false)} style={{ background: "transparent", color: textColor, border: "none", borderBottom: `2px solid #4f8bff`, outline: "none", fontWeight: 700, fontSize: "0.9rem", width: "150px" }} />
-          ) : (
-            <Stack direction="row" alignItems="center" spacing={1} onClick={() => setIsEditingName(true)} sx={{ cursor: "pointer", "&:hover": { opacity: 0.8 } }}>
-              <Typography variant="body2" sx={{ fontWeight: 800 }}>{projectName}</Typography>
-              <EditIcon size={12} style={{ opacity: 0.5 }} />
-            </Stack>
-          )}
-          <Tooltip title="Clear Canvas">
-            <IconButton 
-              size="small" 
-              onClick={() => { if(window.confirm("Clear all elements? This cannot be undone.")) clearCanvas(); }} 
-              sx={{ color: "rgba(255,79,79,0.7)", ml: 2, p: 0.5 }}
-            >
-              <TrashIcon size={16} />
-            </IconButton>
-          </Tooltip>
-          <Box component="span" sx={{ opacity: 0.4, fontSize: "0.75rem", fontWeight: 600, ml: 1 }}>• Saved {lastSaved}</Box>
+    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: "transparent", color: "#f1f5f9", overflow: "hidden", position: "relative" }}>
+      {/* Editor Header */}
+      <Box className="glass-panel" sx={{ height: 64, px: 3, display: "flex", alignItems: "center", zIndex: 1100, borderRadius: 0, borderTop: "none", borderLeft: "none", borderRight: "none" }}>
+        <Stack direction="row" alignItems="center" spacing={2} sx={{ mr: 4 }}>
+          <IconButton onClick={() => loadProject("")} sx={{ color: "rgba(255,255,255,0.4)", "&:hover": { color: "#22d3ee" } }}>
+            <ChevronLeft size={20} />
+          </IconButton>
+          <DodoLogo size={24} />
         </Stack>
 
-        <Stack direction="row" spacing={2} alignItems="center">
-          <IconButton onClick={() => setTheme(theme === "dark" ? "light" : "dark")} sx={{ color: subTextColor }}>{theme === "dark" ? <LightModeIcon size={18} /> : <DarkModeIcon size={18} />}</IconButton>
-          <IconButton onClick={handleExportPNG} sx={{ color: "#4f8bff" }}><SaveIcon size={18} /></IconButton>
-          <Button variant="contained" onClick={handleExportPNG} sx={{ bgcolor: "#4f8bff", textTransform: "none", borderRadius: 2, fontWeight: 900, px: 3 }}>Export PNG</Button>
+        <Divider orientation="vertical" flexItem sx={{ mx: 1, my: 1.5, opacity: 0.1 }} />
+
+        <Stack direction="row" alignItems="center" sx={{ flexGrow: 1, ml: 3, gap: 1 }}>
+          {isEditingName ? (
+            <input 
+              autoFocus 
+              value={projectName} 
+              onChange={(e) => updateProjectName(e.target.value)} 
+              onBlur={() => setIsEditingName(false)} 
+              onKeyDown={(e) => e.key === "Enter" && setIsEditingName(false)} 
+              className="heading-font"
+              style={{ background: "transparent", color: "#fff", border: "none", borderBottom: "2px solid #22d3ee", outline: "none", fontWeight: 700, fontSize: "0.95rem", width: "180px" }} 
+            />
+          ) : (
+            <Stack direction="row" alignItems="center" spacing={1} onClick={() => setIsEditingName(true)} sx={{ cursor: "pointer", "&:hover": { opacity: 0.8 } }}>
+              <Typography className="heading-font" sx={{ fontWeight: 700, fontSize: "0.95rem" }}>{projectName}</Typography>
+              <EditIcon size={12} style={{ opacity: 0.3 }} />
+            </Stack>
+          )}
+          <Box className="heading-font" component="span" sx={{ opacity: 0.3, fontSize: "0.7rem", fontWeight: 600, ml: 1, textTransform: "uppercase", letterSpacing: "1px" }}>• {activeMode}</Box>
+        </Stack>
+
+        <Stack direction="row" spacing={1.5} alignItems="center">
+          <IconButton onClick={() => setTheme(theme === "dark" ? "light" : "dark")} sx={{ color: "rgba(255,255,255,0.4)" }}>
+            {theme === "dark" ? <LightModeIcon size={18} /> : <DarkModeIcon size={18} />}
+          </IconButton>
+          
+          <Button 
+            variant="outlined" 
+            size="small" 
+            startIcon={<Share2 size={16} />}
+            sx={{ borderRadius: "8px", borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)", textTransform: "none", fontWeight: 700, height: 36 }}
+          >
+            Share
+          </Button>
+
+          <Button 
+            variant="contained" 
+            onClick={handleExportPNG} 
+            startIcon={<Download size={16} />}
+            sx={{ bgcolor: "#22d3ee", color: "#020617", textTransform: "none", borderRadius: "8px", fontWeight: 800, px: 2, height: 36, "&:hover": { bgcolor: "#67e8f9" } }}
+          >
+            Export
+          </Button>
+
+          <Box sx={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", ml: 1 }}>
+            <User size={16} color="rgba(255,255,255,0.4)" />
+          </Box>
         </Stack>
       </Box>
 
       <Box sx={{ flexGrow: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        <Box className="mui-glass-panel" sx={{ width: 80, borderRight: `1px solid ${borderColor}`, display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1 }}>
+        {/* Floating Toolbar */}
+        <Box 
+          className="glass-panel" 
+          sx={{ 
+            position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)",
+            width: 64, borderRadius: "16px", zIndex: 1100,
+            display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1,
+            boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
+          }}
+        >
           {toolbarTools.map((tool) => {
             const isActive = activeTool === tool.id || (tool.id === "layers" && showLayers) || (tool.id === "grid" && gridEnabled);
             return (
               <Tooltip key={tool.id} title={tool.label} placement="right" arrow>
-                <IconButton 
-                  onClick={() => { 
-                    if (tool.id === "layers") setShowLayers(!showLayers); 
-                    else if (tool.id === "grid") setGridEnabled(!gridEnabled); 
+                <IconButton
+                  onClick={() => {
+                    if (tool.id === "layers") setShowLayers(!showLayers);
+                    else if (tool.id === "grid") setGridEnabled(!gridEnabled);
                     else if (tool.id === "import") document.getElementById("import-input")?.click();
-                    else setActiveTool(tool.id); 
-                  }} 
-                  sx={{ 
-                    flexDirection: "column", 
-                    width: 56, height: 56, 
-                    borderRadius: 2, 
-                    color: isActive ? "#4f8bff" : subTextColor, 
-                    bgcolor: isActive ? "rgba(79, 139, 255, 0.12)" : "transparent",
-                    transition: "all 0.2s",
-                    "&:hover": { bgcolor: isActive ? "rgba(79, 139, 255, 0.2)" : "rgba(255,255,255,0.05)" }
+                    else setActiveTool(tool.id);
+                  }}
+                  sx={{
+                    width: 48, height: 48,
+                    borderRadius: "12px",
+                    color: isActive ? "#22d3ee" : "rgba(255,255,255,0.4)",
+                    bgcolor: isActive ? "rgba(34, 211, 238, 0.1)" : "transparent",
+                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                    "&:hover": { bgcolor: isActive ? "rgba(34, 211, 238, 0.15)" : "rgba(255,255,255,0.05)", color: isActive ? "#22d3ee" : "#fff", transform: "scale(1.05)" }
                   }}>
-                  {React.cloneElement(tool.icon as any, { size: 20 })}
-                  <Typography sx={{ fontSize: "0.55rem", fontWeight: 900, mt: 0.5 }}>{tool.label.slice(0, 10)}</Typography>
+                  {React.cloneElement(tool.icon as any, { size: 20, strokeWidth: isActive ? 2.5 : 2 })}
                 </IconButton>
               </Tooltip>
             );
           })}
           <input id="import-input" type="file" accept="image/*,.svg" style={{ display: "none" }} onChange={handleImport} />
+          
+          <Divider sx={{ width: "60%", my: 1, opacity: 0.1 }} />
+
+          <Tooltip title="Clear Canvas">
+            <IconButton onClick={() => { if (window.confirm("Clear all elements?")) clearCanvas(); }} sx={{ color: "rgba(255,100,100,0.4)", "&:hover": { color: "#ff5f5f", bgcolor: "rgba(255,0,0,0.05)" } }}>
+              <TrashIcon size={18} />
+            </IconButton>
+          </Tooltip>
         </Box>
 
         <Box sx={{ flexGrow: 1, position: "relative" }}>
@@ -243,6 +280,7 @@ const App: React.FC = () => {
             onDuplicate={duplicateElements} 
             onBringToFront={bringToFront} 
             onSendToBack={sendToBack} 
+            onImportFile={handleImportFile}
             onGroup={groupElements}
             onUngroup={ungroupElements}
             onUndo={undo} 
@@ -253,21 +291,21 @@ const App: React.FC = () => {
             onUpdateZoom={handleZoom} 
             theme={theme} 
             gridEnabled={gridEnabled} 
-            boardMode={boardMode} 
+            activeMode={activeMode} 
             artboardSize={artboardSize} 
           />
-          
+
           {selectedElement && (
             <Box sx={{ position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", zIndex: 1200 }}>
-              <PropertyBar 
-                element={selectedElement} 
-                onUpdate={updateElement} 
-                onRemove={(id)=>removeElements([id])} 
-                onBringToFront={(id)=>bringToFront([id])} 
-                onSendToBack={(id)=>sendToBack([id])} 
-                onDuplicate={(id)=>duplicateElements([id])}
+              <PropertyBar
+                element={selectedElement}
+                onUpdate={updateElement}
+                onRemove={(id) => removeElements([id])}
+                onBringToFront={(id) => bringToFront([id])}
+                onSendToBack={(id) => sendToBack([id])}
+                onDuplicate={(id) => duplicateElements([id])}
                 onAlign={(id, align) => alignElements([id], align)}
-                theme={theme} 
+                theme={theme}
               />
             </Box>
           )}
@@ -293,6 +331,27 @@ const App: React.FC = () => {
           )}
         </Box>
       </Box>
+      <ShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} theme={theme} />
+
+      <Tooltip title="Keyboard Shortcuts (?)">
+        <IconButton 
+          onClick={() => setShowShortcuts(true)}
+          sx={{ 
+            position: "absolute", bottom: 24, right: 24, 
+            width: 48, height: 48,
+            borderRadius: "50%",
+            zIndex: 2000,
+            bgcolor: "rgba(15, 23, 42, 0.4)",
+            backdropFilter: "blur(12px)",
+            border: "1px solid rgba(255,255,255,0.1)",
+            color: "#22d3ee",
+            "&:hover": { bgcolor: "rgba(34, 211, 238, 0.1)", transform: "scale(1.05)" },
+            transition: "all 0.2s"
+          }}
+        >
+          <Typography className="heading-font" sx={{ fontWeight: 800, fontSize: "1.1rem" }}>?</Typography>
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 };

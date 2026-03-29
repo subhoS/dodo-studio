@@ -1,115 +1,126 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
-import type { ShapeType, SvgElement } from "../types/svg";
+import type { ShapeType, SvgElement, Project, CanvasSize } from "../types/svg";
 import { simplifyPath } from "../utils/geometry";
 
-const STORAGE_KEY_PREFIX = "vibe_code_canvas_data_";
+const PROJECTS_STORAGE_KEY = "vibe_code_projects_v2";
+const ACTIVE_PROJECT_KEY = "vibe_code_active_id";
 
-// Combined history state so pushToHistory is always atomic (no stale closure)
 interface HistoryState {
   histories: Record<string, SvgElement[][]>;
   indexes: Record<string, number>;
 }
 
-export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") => {
-  const [allElements, setAllElements] = useState<Record<string, SvgElement[]>>(() => {
-    const savedMoodboard = localStorage.getItem(`${STORAGE_KEY_PREFIX}moodboard`);
-    const savedDesigner = localStorage.getItem(`${STORAGE_KEY_PREFIX}designer`);
-    return {
-      moodboard: savedMoodboard ? JSON.parse(savedMoodboard) : [],
-      designer: savedDesigner ? JSON.parse(savedDesigner) : [],
-    };
+export const useSvgStore = () => {
+  const [projects, setProjects] = useState<Project[]>(() => {
+    const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+    
+    // MIGRATION / INITIAL DATA
+    const legacyMood = localStorage.getItem("vibe_code_canvas_data_moodboard");
+    const legacyDesign = localStorage.getItem("vibe_code_canvas_data_designer");
+    
+    const initial: Project[] = [];
+    if (legacyMood) initial.push({ id: "legacy-mood", name: "Moodboard (Migrated)", elements: JSON.parse(legacyMood), mode: "moodboard", artboardSize: { width: 2000, height: 1500 }, lastModified: Date.now() });
+    if (legacyDesign) initial.push({ id: "legacy-design", name: "Designer (Migrated)", elements: JSON.parse(legacyDesign), mode: "designer", artboardSize: { width: 1080, height: 1080 }, lastModified: Date.now() });
+    
+    return initial;
+  });
+
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(() => {
+    return localStorage.getItem(ACTIVE_PROJECT_KEY) || null;
+  });
+
+  const [historyState, setHistoryState] = useState<HistoryState>({
+    histories: {},
+    indexes: {},
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Fix #2 & #8: Combined into one state object so updates are always atomic —
-  // no stale closure risk, and the index always stays in sync with the history array.
-  const [historyState, setHistoryState] = useState<HistoryState>({
-    histories: { moodboard: [[]], designer: [[]] },
-    indexes: { moodboard: 0, designer: 0 },
-  });
+  const activeProject = useMemo(() => 
+    projects.find(p => p.id === activeProjectId) || null, 
+    [projects, activeProjectId]
+  );
 
-  const [projectName, setProjectName] = useState<string>(() => {
-    // Fix: read from the actual activeMode key at init time
-    return localStorage.getItem(`${STORAGE_KEY_PREFIX}${activeMode}_name`) || "Untitled Project";
-  });
+  const activeMode = activeProject?.mode || "moodboard";
+  const elements = useMemo(() => activeProject?.elements || [], [activeProject]);
 
-  const elements = useMemo(() => allElements[activeMode] || [], [allElements, activeMode]);
-
-  // Ref that always holds the latest elements — lets updateAndSave compute next elements
-  // without relying on the functional setState updater (which causes illegal nested setState).
-  const allElementsRef = useRef<Record<string, SvgElement[]>>(allElements);
-  useEffect(() => { allElementsRef.current = allElements; }, [allElements]);
+  const projectsRef = useRef<Project[]>(projects);
+  useEffect(() => { projectsRef.current = projects; }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${activeMode}`, JSON.stringify(elements));
-  }, [elements, activeMode]);
+    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+  }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem(`${STORAGE_KEY_PREFIX}${activeMode}_name`, projectName);
-  }, [projectName, activeMode]);
+    if (activeProjectId) localStorage.setItem(ACTIVE_PROJECT_KEY, activeProjectId);
+    else localStorage.removeItem(ACTIVE_PROJECT_KEY);
+  }, [activeProjectId]);
 
-  // Fix #2 & #8: purely inside the updater — no stale closures possible
   const pushToHistory = useCallback(
     (newElements: SvgElement[]) => {
       setHistoryState((prev) => {
-        const currentHistory = prev.histories[activeMode] ?? [[]];
-        const currentIndex = prev.indexes[activeMode] ?? 0;
+        if (!activeProjectId) return prev;
+        const currentHistory = prev.histories[activeProjectId] ?? [[]];
+        const currentIndex = prev.indexes[activeProjectId] ?? 0;
         const trimmed = currentHistory.slice(0, currentIndex + 1);
         const newHistory = [...trimmed, newElements].slice(-50);
         const newIndex = newHistory.length - 1;
         return {
-          histories: { ...prev.histories, [activeMode]: newHistory },
-          indexes: { ...prev.indexes, [activeMode]: newIndex },
+          histories: { ...prev.histories, [activeProjectId]: newHistory },
+          indexes: { ...prev.indexes, [activeProjectId]: newIndex },
         };
       });
     },
-    [activeMode],
+    [activeProjectId],
   );
 
   const undo = useCallback(() => {
     setHistoryState((prev) => {
-      const currentIndex = prev.indexes[activeMode] ?? 0;
-      const currentHistory = prev.histories[activeMode] ?? [[]];
+      if (!activeProjectId) return prev;
+      const currentIndex = prev.indexes[activeProjectId] ?? 0;
+      const currentHistory = prev.histories[activeProjectId] ?? [[]];
       if (currentIndex > 0) {
         const prevIndex = currentIndex - 1;
-        setAllElements((els) => ({ ...els, [activeMode]: currentHistory[prevIndex] }));
+        const targetElements = currentHistory[prevIndex];
+        setProjects(pjs => pjs.map(p => p.id === activeProjectId ? { ...p, elements: targetElements } : p));
         setSelectedIds([]);
-        return { ...prev, indexes: { ...prev.indexes, [activeMode]: prevIndex } };
+        return { ...prev, indexes: { ...prev.indexes, [activeProjectId]: prevIndex } };
       } else if (currentIndex === 0) {
-        setAllElements((els) => ({ ...els, [activeMode]: [] }));
+        setProjects(pjs => pjs.map(p => p.id === activeProjectId ? { ...p, elements: [] } : p));
         setSelectedIds([]);
-        return { ...prev, indexes: { ...prev.indexes, [activeMode]: -1 } };
+        return { ...prev, indexes: { ...prev.indexes, [activeProjectId]: -1 } };
       }
       return prev;
     });
-  }, [activeMode]);
+  }, [activeProjectId]);
 
   const redo = useCallback(() => {
     setHistoryState((prev) => {
-      const currentIndex = prev.indexes[activeMode] ?? 0;
-      const currentHistory = prev.histories[activeMode] ?? [[]];
+      if (!activeProjectId) return prev;
+      const currentIndex = prev.indexes[activeProjectId] ?? 0;
+      const currentHistory = prev.histories[activeProjectId] ?? [[]];
       if (currentIndex < currentHistory.length - 1) {
         const nextIndex = currentIndex + 1;
-        setAllElements((els) => ({ ...els, [activeMode]: currentHistory[nextIndex] }));
+        const targetElements = currentHistory[nextIndex];
+        setProjects(pjs => pjs.map(p => p.id === activeProjectId ? { ...p, elements: targetElements } : p));
         setSelectedIds([]);
-        return { ...prev, indexes: { ...prev.indexes, [activeMode]: nextIndex } };
+        return { ...prev, indexes: { ...prev.indexes, [activeProjectId]: nextIndex } };
       }
       return prev;
     });
-  }, [activeMode]);
+  }, [activeProjectId]);
 
-  // Fix: no longer calls setState inside a setState updater.
-  // Computes the next elements up-front using the ref, then calls both setters
-  // as siblings in the same event — React 18 batches them into one commit.
   const updateAndSave = useCallback(
     (update: SvgElement[] | ((prev: SvgElement[]) => SvgElement[])) => {
-      const currentModeElements = allElementsRef.current[activeMode] || [];
-      const next = typeof update === "function" ? update(currentModeElements) : update;
-      setAllElements((prev) => ({ ...prev, [activeMode]: next }));
+      if (!activeProjectId) return;
+      const currentPrj = projectsRef.current.find(p => p.id === activeProjectId);
+      if (!currentPrj) return;
+      const next = typeof update === "function" ? update(currentPrj.elements) : update;
+      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, elements: next, lastModified: Date.now() } : p));
       pushToHistory(next);
     },
-    [activeMode, pushToHistory],
+    [activeProjectId, pushToHistory],
   );
 
   const addElement = useCallback(
@@ -121,8 +132,8 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
         type,
         x: initialProps?.x ?? 400,
         y: initialProps?.y ?? 300,
-        width: (type === "rect" || type === "circle" || type === "image" || type === "svg") ? 150 : (type === "text" ? 120 : undefined),
-        height: (type === "rect" || type === "circle" || type === "image" || type === "svg") ? 100 : (type === "text" ? 40 : undefined),
+        width: (type === "rect" || type === "circle" || type === "image" || type === "svg" || type === "section") ? 150 : (type === "text" ? 120 : undefined),
+        height: (type === "rect" || type === "circle" || type === "image" || type === "svg" || type === "section") ? 100 : (type === "text" ? 40 : undefined),
         fill: "transparent",
         fillStyle: isDesigner ? "solid" : "rough",
         stroke: isDesigner ? "#4f8bff" : "#f6f8fa",
@@ -157,17 +168,12 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     (id: string, updates: Partial<SvgElement>) => {
       updateAndSave((prev) => {
         const toUpdate = [id];
-        // Recursive children check
         const findChildren = (pid: string) => {
           prev.forEach(el => { if (el.parentId === pid) { toUpdate.push(el.id); findChildren(el.id); } });
         };
         findChildren(id);
-        
         return prev.map((el) => {
           if (!toUpdate.includes(el.id)) return el;
-          // Apply exact updates for the target, but only movement/delta for children if they were dragged?
-          // Actually, if it's a direct update (like color), apply to children too? 
-          // For now, let's just apply to the target. For move, we'll use updateElements.
           return el.id === id ? { ...el, ...updates } : el;
         });
       });
@@ -179,8 +185,6 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     (ids: string[], updates: Partial<SvgElement> | ((el: SvgElement) => Partial<SvgElement>)) => {
       updateAndSave((prev) => {
         const allTargetIds = new Set(ids);
-        
-        // Find all recursive children of targets
         const findChildren = (pid: string) => {
           prev.forEach(el => {
             if (el.parentId === pid && !allTargetIds.has(el.id)) {
@@ -190,7 +194,6 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
           });
         };
         ids.forEach(id => findChildren(id));
-
         return prev.map((el) => {
           if (!allTargetIds.has(el.id)) return el;
           const up = typeof updates === "function" ? updates(el) : updates;
@@ -215,45 +218,40 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     [updateAndSave],
   );
 
-  // Fix #4: addPoint still bypasses history for performance during drawing
-  // (pushing a history entry per mouse-move would be too expensive).
-  // Canvas must call finalizeDrawing() on mouseUp to commit the stroke.
   const addPoint = useCallback(
     (id: string, x: number, y: number) => {
-      setAllElements((prev) => {
-        const current = prev[activeMode] || [];
-        const next = current.map((el) =>
-          el.id === id ? { ...el, points: [...(el.points || []), { x, y }] } : el
-        );
-        return { ...prev, [activeMode]: next };
-      });
+      if (!activeProjectId) return;
+      setProjects((prev) => prev.map(p => p.id === activeProjectId ? { 
+        ...p, 
+        elements: p.elements.map(el => el.id === id ? { ...el, points: [...(el.points || []), { x, y }] } : el) 
+      } : p));
     },
-    [activeMode],
+    [activeProjectId],
   );
 
-  // Fix #4: Called by Canvas after pencil stroke ends to push a history snapshot
   const finalizeDrawing = useCallback(
     (id: string) => {
-      setAllElements((prev) => {
-        const current = prev[activeMode] || [];
-        const next = current.map((el) => {
+      if (!activeProjectId) return;
+      setProjects((prev) => {
+        const target = prev.find(p => p.id === activeProjectId);
+        if (!target) return prev;
+        const nextElements = target.elements.map((el) => {
           if (el.id === id && el.type === "pencil" && el.points) {
             return { ...el, points: simplifyPath(el.points, 1.5) };
           }
           return el;
         });
-        pushToHistory(next);
-        return { ...prev, [activeMode]: next };
+        pushToHistory(nextElements);
+        return prev.map(p => p.id === activeProjectId ? { ...p, elements: nextElements } : p);
       });
     },
-    [activeMode, pushToHistory],
+    [activeProjectId, pushToHistory],
   );
 
   const removeElements = useCallback(
     (ids: string[]) => {
       updateAndSave((prev) => {
         const toRemove = new Set(ids);
-        // Also remove children of these parents
         const findChildren = (pid: string) => {
              prev.forEach(el => { if (el.parentId === pid) { toRemove.add(el.id); findChildren(el.id); } });
         };
@@ -267,24 +265,16 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
 
   const groupElements = useCallback(
     (ids: string[]) => {
-      if (ids.length < 2) return;
-      // Step 1: Find bounds of children
-      const current = allElementsRef.current[activeMode] || [];
-      const selected = current.filter(el => ids.includes(el.id));
+      if (ids.length < 2 || !activeProjectId) return;
+      const currentPrj = projectsRef.current.find(p => p.id === activeProjectId);
+      if (!currentPrj) return;
+      const selected = currentPrj.elements.filter(el => ids.includes(el.id));
       const minX = Math.min(...selected.map(el => el.x));
       const minY = Math.min(...selected.map(el => el.y));
-      
       const groupId = `group-${Math.random().toString(36).substring(2, 9)}`;
-      
-      // Step 2: Create a dummy Group element (represented as a transparent rect or just a logical node)
-      // Actually, for DODO, let's treat groups as logical units. 
-      // But we need a parent node to "hold" them.
-      // Let's create a hidden 'section' or similar if we want a naming thing.
-      // For now, let's just use parentId referring to the FIRST element in the list? No, that's messy.
-      // Let's create a "group" node.
       const groupNode: SvgElement = {
         id: groupId,
-        type: "section", // We'll use 'section' for grouping too but styled specifically
+        type: "section",
         name: `Group ${elements.length / 5 + 1}`,
         x: minX,
         y: minY,
@@ -295,20 +285,18 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
         seed: Math.random(),
         roughness: 0,
       };
-
       updateAndSave(prev => {
         const next = prev.map(el => ids.includes(el.id) ? { ...el, parentId: groupId } : el);
         return [...next, groupNode];
       });
       setSelectedIds([groupId]);
     },
-    [activeMode, updateAndSave, elements.length]
+    [activeProjectId, updateAndSave, elements.length]
   );
 
   const ungroupElements = useCallback(
     (ids: string[]) => {
        updateAndSave(prev => {
-         // If a group node is selected, unparent its children and delete the group node
          const parentsToDelete = new Set<string>();
          const next = prev.map(el => {
            if (ids.includes(el.parentId || "")) return { ...el, parentId: undefined };
@@ -372,8 +360,6 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     [updateAndSave],
   );
 
-  // Fix #3/#6: removed the `< 2` guard — single-element calls are now no-ops
-  // (min===max so all alignments resolve to the element's own position).
   const alignElements = useCallback(
     (ids: string[], alignment: "left" | "center" | "right" | "top" | "v-center" | "bottom") => {
       updateAndSave((prev) => {
@@ -411,13 +397,37 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
   );
   const selectedElement = selectedElements[0] || null;
 
-  const currentIndex = historyState.indexes[activeMode] ?? 0;
-  const currentHistory = historyState.histories[activeMode] ?? [[]];
+  const currentIndex = activeProjectId ? (historyState.indexes[activeProjectId] ?? 0) : 0;
+  const currentHistory = activeProjectId ? (historyState.histories[activeProjectId] ?? [[]]) : [[]];
+
+  const createProject = useCallback((name: string, mode: "moodboard" | "designer", size: CanvasSize) => {
+    const id = `prj-${Math.random().toString(36).substring(2, 11)}`;
+    const newProject: Project = { id, name, mode, artboardSize: size, elements: [], lastModified: Date.now() };
+    setProjects(prev => [newProject, ...prev]);
+    setActiveProjectId(id);
+    return id;
+  }, []);
+
+  const deleteProject = useCallback((id: string) => {
+    setProjects(prev => prev.filter(p => p.id !== id));
+    if (activeProjectId === id) setActiveProjectId(null);
+  }, [activeProjectId]);
+
+  const loadProject = useCallback((id: string) => {
+    setActiveProjectId(id);
+    setSelectedIds([]);
+  }, []);
 
   return {
+    projects,
+    activeProject,
+    loadProject,
+    createProject,
+    deleteProject,
     elements,
     selectedIds,
     setSelectedIds,
+    activeMode,
     addElement,
     updateElement,
     updateElements,
@@ -440,7 +450,9 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     canRedo: currentIndex < currentHistory.length - 1,
     selectedElements,
     selectedElement,
-    projectName,
-    setProjectName,
+    updateProjectName: (name: string) => {
+      if (!activeProjectId) return;
+      setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));
+    }
   };
 };
