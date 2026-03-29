@@ -74,6 +74,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const [editingTextPos, setEditingTextPos] = useState<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const drawingIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -232,7 +233,19 @@ const Canvas: React.FC<CanvasProps> = ({
         .filter(el => el.visible && isElementInBox(el, box))
         .map(el => el.id);
       if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
-    } else if (dragInfo.mode === "group-resize" && dragInfo.groupBounds) {
+    } else {
+      // HOVER DETECTION
+      if (activeTool === "selection" && !dragInfo) {
+        const hovered = [...elements].reverse().find(el => {
+          if (!el.visible || el.locked) return false;
+          const b = getElementBounds(el);
+          return pos.x >= b.x && pos.x <= b.x + b.width && pos.y >= b.y && pos.y <= b.y + b.height;
+        });
+        setHoveredId(hovered?.id || null);
+      }
+    }
+
+    if (dragInfo.mode === "group-resize" && dragInfo.groupBounds) {
       const { gx, gy, gw, gh, handle } = dragInfo.groupBounds;
       // Determine the fixed anchor corner and compute new group dimensions
       let anchorX: number, anchorY: number, newGw: number, newGh: number;
@@ -374,6 +387,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
     const centerX = minX + (maxX - minX) / 2;
     const centerY = minY + (maxY - minY) / 2;
+    const isRotating = dragInfo?.mode === "resize" && dragInfo?.handle === "rotate";
 
     return (
       <g transform={`rotate(${el.rotation || 0}, ${centerX}, ${centerY})`}>
@@ -383,13 +397,29 @@ const Canvas: React.FC<CanvasProps> = ({
             return (
               <g key={h.id}>
                 <line x1={h.x} y1={h.y + 6} x2={h.x} y2={minY} stroke="#4f8bff" strokeWidth="1" strokeDasharray="2 2" />
-                <circle cx={h.x} cy={h.y} r={6} fill="white" stroke="#4f8bff" strokeWidth="1.5" style={{ cursor: "grab", pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
+                <circle 
+                  cx={h.x} cy={h.y} r={8} 
+                  fill="white" stroke="#4f8bff" strokeWidth={1.5} 
+                  style={{ cursor: "grab", pointerEvents: "all", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))" }} 
+                  onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} 
+                />
+                <path d={`M ${h.x-3} ${h.y-3} A 4 4 0 1 1 ${h.x+3} ${h.y-3}`} fill="none" stroke="#4f8bff" strokeWidth="1.2" strokeLinecap="round" style={{ pointerEvents: "none" }} />
+                
+                {/* ROTATION TOOLTIP */}
+                {isRotating && (
+                  <g transform={`translate(${h.x + 20}, ${h.y - 10}) rotate(${-(el.rotation || 0)})`}>
+                    <rect x={0} y={0} width={40} height={20} rx={4} fill="#4f8bff" />
+                    <text x={20} y={11} textAnchor="middle" dominantBaseline="middle" fill="white" style={{ fontSize: "10px", fontWeight: 900 }}>
+                      {Math.round(el.rotation || 0)}°
+                    </text>
+                  </g>
+                )}
               </g>
             );
           }
           return el.type === "line" || el.type === "arrow"
-            ? <circle key={h.id} cx={h.x} cy={h.y} r={6} fill="white" stroke="#4f8bff" strokeWidth="1.5" style={{ cursor: "crosshair", pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
-            : <rect key={h.id} x={h.x - 6} y={h.y - 6} width={12} height={12} rx={2} fill="white" stroke="#4f8bff" strokeWidth="2" style={{ cursor: `${h.id==="tl"||h.id==="br"?"nwse":"nesw"}-resize`, pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />;
+            ? <circle key={h.id} cx={h.x} cy={h.y} r={7} fill="white" stroke="#4f8bff" strokeWidth={1.5} style={{ cursor: "crosshair", pointerEvents: "all", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
+            : <rect key={h.id} x={h.x - 6} y={h.y - 6} width={12} height={12} rx={3} fill="white" stroke="#4f8bff" strokeWidth={2} style={{ cursor: `${h.id==="tl"||h.id==="br"?"nwse":"nesw"}-resize`, pointerEvents: "all", filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.15))" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />;
         })}
       </g>
     );
@@ -398,7 +428,21 @@ const Canvas: React.FC<CanvasProps> = ({
   const editingEl = elements.find(el => el.id === editingTextId);
 
   return (
-    <Box sx={{ width:"100%", height:"100%", bgcolor: theme==="dark"?"#0b0e14":"#ffffff", position:"relative", overflow:"hidden", backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.1)"} 1px, transparent 1px)`:"none", backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px` }} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onWheel={handleWheel}>
+    <Box 
+      sx={{ 
+        width:"100%", height:"100%", 
+        bgcolor: theme==="dark"?"#0b0e14":"#ffffff", 
+        position:"relative", overflow:"hidden", 
+        backgroundImage: gridEnabled?`radial-gradient(circle, ${theme==="dark"?"rgba(255,255,255,0.08)":"rgba(0,0,0,0.1)"} 1px, transparent 1px)`:"none", 
+        backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, 
+        backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px`,
+        cursor: isPanning ? "grabbing" : ["rect", "circle", "line", "arrow"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
+      }} 
+      onMouseDown={handleMouseDown} 
+      onMouseMove={handleMouseMove} 
+      onMouseUp={handleMouseUp} 
+      onWheel={handleWheel}
+    >
       <svg ref={svgRef} width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
         <g transform={`translate(${offset.x*(zoom/100)}, ${offset.y*(zoom / 100)}) scale(${zoom / 100})`}>
           {boardMode === "designer" && (
@@ -408,9 +452,10 @@ const Canvas: React.FC<CanvasProps> = ({
           {elements.map(el => {
             const isSelected = selectedIds.includes(el.id);
             const isEditing = el.id === editingTextId;
+            const isHovered = hoveredId === el.id;
             return (
               <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { if (el.locked) return; e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text" && !el.locked){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: el.locked ? "not-allowed" : activeTool==="selection"?"pointer":"default" }}>
-                <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} />
+                <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} isHovered={isHovered} />
                 {isSelected && selectedIds.length === 1 && renderHandles(el)}
               </g>
             );
@@ -533,7 +578,19 @@ const Canvas: React.FC<CanvasProps> = ({
             );
           })()}
 
-          {selectionBox && <rect x={Math.min(selectionBox.x, selectionBox.x+selectionBox.width)} y={Math.min(selectionBox.y, selectionBox.y+selectionBox.height)} width={Math.abs(selectionBox.width)} height={Math.abs(selectionBox.height)} fill="rgba(79, 139, 255, 0.05)" stroke="#4f8bff" strokeWidth="1" />}
+          {selectionBox && (
+            <rect 
+              x={Math.min(selectionBox.x, selectionBox.x+selectionBox.width)} 
+              y={Math.min(selectionBox.y, selectionBox.y+selectionBox.height)} 
+              width={Math.abs(selectionBox.width)} 
+              height={Math.abs(selectionBox.height)} 
+              fill="rgba(79, 139, 255, 0.08)" 
+              stroke="#4f8bff" 
+              strokeWidth="1.5"
+              rx={4}
+              style={{ filter: "drop-shadow(0 0 8px rgba(79,139,255,0.2))" }}
+            />
+          )}
         </g>
 
       </svg>

@@ -8,12 +8,14 @@ interface HandDrawnElementProps {
   element: SvgElement;
   isSelected?: boolean;
   isEditing?: boolean;
+  isHovered?: boolean;
 }
 
 export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
   element,
   isSelected,
   isEditing,
+  isHovered,
 }) => {
   if (!element.visible || (element.type === "text" && isEditing)) return null;
 
@@ -111,6 +113,14 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
 
   return (
     <g transform={`rotate(${element.rotation || 0}, ${centerX}, ${centerY})`} style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer", opacity: element.opacity ?? 1 }}>
+      {/* HOVER GLOW / GHOST OUTLINE */}
+      {isHovered && !isSelected && (
+        <g style={{ opacity: 0.4 }}>
+          {element.type === "rect" && <rect x={element.x - 2} y={element.y - 2} width={(element.width || 0) + 4} height={(element.height || 0) + 4} rx={(element.cornerRadius || 0) + 2} fill="none" stroke="#4f8bff" strokeWidth="2" />}
+          {element.type === "circle" && <ellipse cx={element.x + (element.width || 0) / 2} cy={element.y + (element.height || 0) / 2} rx={(element.width || 0) / 2 + 2} ry={(element.height || 0) / 2 + 2} fill="none" stroke="#4f8bff" strokeWidth="2" />}
+          {(element.type === "line" || element.type === "arrow") && <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke="#4f8bff" strokeWidth={(element.strokeWidth || 2) + 4} strokeLinecap="round" />}
+        </g>
+      )}
       <g>
         {element.fillStyle === "solid" ? (
           <>
