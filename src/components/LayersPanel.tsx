@@ -56,6 +56,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
   const [editingName, setEditingName] = useState("");
   const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [lastSelectedId, setLastSelectedId] = useState<string | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
 
   const dark   = theme === "dark";
@@ -73,8 +74,25 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
     : reversed;
 
   const handleRowClick = (e: React.MouseEvent, id: string) => {
-    if (e.shiftKey) {
-      // Shift-click: add or remove from selection
+    e.stopPropagation();
+    const isCmd = e.metaKey || e.ctrlKey;
+    const isShift = e.shiftKey;
+
+    if (isShift && lastSelectedId && filtered.length > 0) {
+      const idx1 = filtered.findIndex(el => el.id === lastSelectedId);
+      const idx2 = filtered.findIndex(el => el.id === id);
+      if (idx1 !== -1 && idx2 !== -1) {
+        const start = Math.min(idx1, idx2);
+        const end = Math.max(idx1, idx2);
+        const range = filtered.slice(start, end + 1).map(el => el.id);
+        // Combine with existing if CMD is also held, else replace
+        onSelect(isCmd ? Array.from(new Set([...selectedIds, ...range])) : range);
+        setLastSelectedId(id);
+        return;
+      }
+    }
+
+    if (isCmd) {
       onSelect(
         selectedIds.includes(id)
           ? selectedIds.filter(sid => sid !== id)
@@ -83,6 +101,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
     } else {
       onSelect([id]);
     }
+    setLastSelectedId(id);
   };
 
   const startRename = (el: SvgElement) => {
