@@ -43,6 +43,7 @@ const App: React.FC = () => {
     removeElements,
     toggleVisibility,
     addPoint,
+    finalizeDrawing,
     duplicateElements,
     bringToFront,
     sendToBack,
@@ -62,6 +63,11 @@ const App: React.FC = () => {
   const [theme, setTheme] = useState<"light" | "dark">("dark");
   const [isEditingName, setIsEditingName] = useState(false);
   const [draggedLayerIdx, setDraggedLayerIdx] = useState<number | null>(null);
+
+  // Fix #7: reset zoom when switching modes so canvas feels fresh
+  useEffect(() => {
+    setZoom(100);
+  }, [boardMode]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -187,6 +193,7 @@ const App: React.FC = () => {
             selectedIds={selectedIds} 
             onSelect={(ids) => setSelectedIds(ids || [])} 
             onAddPoint={addPoint} 
+            onFinalizeDrawing={finalizeDrawing} 
             onUpdateElement={updateElement} 
             onUpdateElements={updateElements} 
             onAddElement={addElement} 

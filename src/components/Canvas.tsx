@@ -9,6 +9,7 @@ interface CanvasProps {
   selectedIds: string[];
   onSelect: (ids: string[] | null) => void;
   onAddPoint: (id: string, x: number, y: number) => void;
+  onFinalizeDrawing: (id: string) => void;
   onUpdateElement: (id: string, updates: Partial<SvgElement>) => void;
   onUpdateElements: (
     ids: string[],
@@ -38,6 +39,7 @@ const Canvas: React.FC<CanvasProps> = ({
   selectedIds,
   onSelect,
   onAddPoint,
+  onFinalizeDrawing,
   onUpdateElement,
   onUpdateElements,
   onAddElement,
@@ -71,6 +73,13 @@ const Canvas: React.FC<CanvasProps> = ({
   const drawingIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  // Fix #1: track whether the text element being edited was just created (vs double-clicked existing)
+  const isNewTextRef = useRef(false);
+
+  // Fix #7: reset pan when mode changes so the canvas re-centres
+  useEffect(() => {
+    setOffset({ x: 0, y: 0 });
+  }, [boardMode]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -82,7 +91,7 @@ const Canvas: React.FC<CanvasProps> = ({
       if (e.key.toLowerCase() === "b" && isCtrl) { e.preventDefault(); onSendToBack(selectedIds); return; }
       if (e.key.toLowerCase() === "z" && isCtrl) { e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo(); return; }
       if (e.key.toLowerCase() === "y" && isCtrl) { e.preventDefault(); onRedo(); return; }
-      
+
       if (!isCtrl) {
         switch (e.key.toLowerCase()) {
           case "v": onSetActiveTool("selection"); break;
@@ -102,8 +111,14 @@ const Canvas: React.FC<CanvasProps> = ({
   }, [editingTextId, selectedIds, elements, onSetActiveTool, onRemoveElements, onSelect, onDuplicate, onBringToFront, onSendToBack, onUndo, onRedo]);
 
   useEffect(() => {
+    // Use requestAnimationFrame so focus happens AFTER all pending browser events
+    // (mouseup, click) from the canvas click are processed. This prevents the canvas
+    // from stealing focus back from the textarea.
     if (editingTextId && textareaRef.current) {
-      textareaRef.current.focus();
+      const raf = requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
+      return () => cancelAnimationFrame(raf);
     }
   }, [editingTextId]);
 
@@ -130,6 +145,10 @@ const Canvas: React.FC<CanvasProps> = ({
       return;
     }
     if (activeTool === "text") {
+      // e.preventDefault() stops the browser from focusing the canvas div on mousedown,
+      // which would steal focus from the textarea when it mounts.
+      e.preventDefault();
+
       // Check if clicked on an existing text element
       const clickedText = [...elements].reverse().find(el => {
         if (el.type !== "text") return false;
@@ -141,12 +160,15 @@ const Canvas: React.FC<CanvasProps> = ({
         onSelect([clickedText.id]);
         setEditingTextId(clickedText.id);
         setEditingTextPos({ x: clickedText.x, y: clickedText.y });
-        setTimeout(() => textareaRef.current?.focus(), 50);
+        // Fix #1: editing existing text — do NOT delete on blur if empty
+        isNewTextRef.current = false;
       } else {
         const id = onAddElement("text", { x: pos.x, y: pos.y, content: "" });
-        onSelect([id]); 
-        setEditingTextId(id); 
+        onSelect([id]);
+        setEditingTextId(id);
         setEditingTextPos({ x: pos.x, y: pos.y });
+        // Fix #1: newly created text — delete on blur if still empty
+        isNewTextRef.current = true;
       }
       return;
     }
@@ -189,7 +211,10 @@ const Canvas: React.FC<CanvasProps> = ({
     } else if (dragInfo.mode === "select") {
       const box = { x: dragInfo.startX, y: dragInfo.startY, width: snPos.x - dragInfo.startX, height: snPos.y - dragInfo.startY };
       setSelectionBox(box);
-      const ids = elements.filter(el => isElementInBox(el, box)).map(el => el.id);
+      // Fix #5: exclude hidden elements from marquee selection
+      const ids = elements
+        .filter(el => el.visible && isElementInBox(el, box))
+        .map(el => el.id);
       if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
     } else if (dragInfo.mode === "resize" && dragInfo.id && dragInfo.originalElement) {
       const el = dragInfo.originalElement as SvgElement, dx = snPos.x - dragInfo.startX, dy = snPos.y - dragInfo.startY;
@@ -211,11 +236,15 @@ const Canvas: React.FC<CanvasProps> = ({
   };
 
   const handleMouseUp = () => {
+    // Fix #4: finalize pencil stroke into history on mouse-up
+    if (dragInfo?.mode === "pencil" && drawingIdRef.current) {
+      onFinalizeDrawing(drawingIdRef.current);
+    }
     if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil")) {
       onSetActiveTool("selection");
     }
     setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null);
-  }
+  };
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey) { onUpdateZoom(e.deltaY > 0 ? -5 : 5); return; }
@@ -228,11 +257,11 @@ const Canvas: React.FC<CanvasProps> = ({
     let minX = b.x, minY = b.y, maxX = b.x + b.width, maxY = b.y + b.height;
     const handles = (el.type === "line" || el.type === "arrow") ? [{id:"p1", x:el.x, y:el.y}, {id:"p2", x:el.x2||el.x, y:el.y2||el.y}]
       : [
-          {id:"tl", x:minX, y:minY}, {id:"tr", x:maxX, y:minY}, 
+          {id:"tl", x:minX, y:minY}, {id:"tr", x:maxX, y:minY},
           {id:"bl", x:minX, y:maxY}, {id:"br", x:maxX, y:maxY},
           {id:"rotate", x:(minX+maxX)/2, y:minY - 30}
         ];
-    
+
     const centerX = minX + (maxX - minX) / 2;
     const centerY = minY + (maxY - minY) / 2;
 
@@ -248,7 +277,7 @@ const Canvas: React.FC<CanvasProps> = ({
               </g>
             );
           }
-          return el.type === "line" || el.type === "arrow" 
+          return el.type === "line" || el.type === "arrow"
             ? <circle key={h.id} cx={h.x} cy={h.y} r={6} fill="white" stroke="#4f8bff" strokeWidth="1.5" style={{ cursor: "crosshair", pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />
             : <rect key={h.id} x={h.x - 6} y={h.y - 6} width={12} height={12} rx={2} fill="white" stroke="#4f8bff" strokeWidth="2" style={{ cursor: `${h.id==="tl"||h.id==="br"?"nwse":"nesw"}-resize`, pointerEvents: "all" }} onMouseDown={(e) => { e.stopPropagation(); setDragInfo({ mode:"resize", id:el.id, handle:h.id, startX:getMousePos(e).x, startY:getMousePos(e).y, originalElement:{...el} }); }} />;
         })}
@@ -270,31 +299,97 @@ const Canvas: React.FC<CanvasProps> = ({
             const isSelected = selectedIds.includes(el.id);
             const isEditing = el.id === editingTextId;
             return (
-              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text"){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: activeTool==="selection"?"pointer":"default" }}>
+              <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text"){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: activeTool==="selection"?"pointer":"default" }}>
                 <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} />
                 {isSelected && selectedIds.length === 1 && renderHandles(el)}
               </g>
             );
           })}
+
+          {/* ── Multi-selection group bounding box ── */}
+          {selectedIds.length > 1 && (() => {
+            const selectedEls = elements.filter(el => selectedIds.includes(el.id));
+            if (selectedEls.length === 0) return null;
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            selectedEls.forEach(el => {
+              const b = getElementBounds(el);
+              minX = Math.min(minX, b.x);
+              minY = Math.min(minY, b.y);
+              maxX = Math.max(maxX, b.x + b.width);
+              maxY = Math.max(maxY, b.y + b.height);
+            });
+            const PAD = 10;
+            const gx = minX - PAD, gy = minY - PAD;
+            const gw = maxX - minX + PAD * 2, gh = maxY - minY + PAD * 2;
+            return (
+              <g>
+                {/* Filled draggable area */}
+                <rect
+                  x={gx} y={gy} width={gw} height={gh}
+                  fill="rgba(79,139,255,0.04)"
+                  stroke="#4f8bff"
+                  strokeWidth={1.5}
+                  strokeDasharray="6 4"
+                  style={{ cursor: "move", pointerEvents: "all" }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const pos = getMousePos(e);
+                    setDragInfo({
+                      mode: "move",
+                      startX: pos.x,
+                      startY: pos.y,
+                      elementOffsets: selectedEls.map(el => ({
+                        id: el.id, x: el.x, y: el.y,
+                        x2: el.x2, y2: el.y2,
+                        points: el.points ? [...el.points] : undefined,
+                      })),
+                    });
+                  }}
+                />
+                {/* Corner indicators */}
+                {[
+                  { x: gx,      y: gy },
+                  { x: gx + gw, y: gy },
+                  { x: gx,      y: gy + gh },
+                  { x: gx + gw, y: gy + gh },
+                ].map((corner, i) => (
+                  <rect key={i} x={corner.x - 5} y={corner.y - 5} width={10} height={10} rx={2}
+                    fill="white" stroke="#4f8bff" strokeWidth={1.5}
+                    style={{ pointerEvents: "none" }}
+                  />
+                ))}
+                {/* Selection count badge */}
+                <rect x={gx} y={gy - 22} width={48} height={18} rx={4} fill="#4f8bff" style={{ pointerEvents: "none" }} />
+                <text x={gx + 24} y={gy - 9} textAnchor="middle" dominantBaseline="middle"
+                  style={{ fill: "#fff", fontSize: "11px", fontWeight: 700, fontFamily: "Inter,sans-serif", pointerEvents: "none", userSelect: "none" }}>
+                  {selectedEls.length} items
+                </text>
+              </g>
+            );
+          })()}
+
           {selectionBox && <rect x={Math.min(selectionBox.x, selectionBox.x+selectionBox.width)} y={Math.min(selectionBox.y, selectionBox.y+selectionBox.height)} width={Math.abs(selectionBox.width)} height={Math.abs(selectionBox.height)} fill="rgba(79, 139, 255, 0.05)" stroke="#4f8bff" strokeWidth="1" />}
         </g>
+
       </svg>
       {editingTextId && editingTextPos && (
-        <Box sx={{ 
-          position: "absolute", 
-          left: `${(editingTextPos.x + offset.x) * (zoom / 100)}px`, 
-          top: `${(editingTextPos.y + offset.y) * (zoom / 100)}px`, 
+        <Box sx={{
+          position: "absolute",
+          left: `${(editingTextPos.x + offset.x) * (zoom / 100)}px`,
+          top: `${(editingTextPos.y + offset.y) * (zoom / 100)}px`,
           zIndex: 2000,
           transformOrigin: "top left"
         }}>
           <textarea
             ref={textareaRef}
-            autoFocus
             value={editingEl?.content || ""}
+            onFocus={() => { /* textarea has focus — keep isNewTextRef intact */ }}
             onBlur={() => {
-              if (editingEl && !editingEl.content?.trim()) {
+              // Fix #1: only auto-delete if this text element was NEWLY created and still empty
+              if (isNewTextRef.current && editingEl && !editingEl.content?.trim()) {
                 onRemoveElements([editingTextId]);
               }
+              isNewTextRef.current = false;
               setEditingTextId(null);
               setEditingTextPos(null);
               onSetActiveTool("selection");
@@ -305,6 +400,7 @@ const Canvas: React.FC<CanvasProps> = ({
                 textareaRef.current?.blur();
               }
               if (e.key === "Escape") {
+                isNewTextRef.current = false;
                 setEditingTextId(null);
                 setEditingTextPos(null);
               }
@@ -323,17 +419,20 @@ const Canvas: React.FC<CanvasProps> = ({
               background: "transparent",
               color: editingEl?.stroke || (theme === "dark" ? "#ffffff" : "#000000"),
               border: "none",
-              padding: 0,
+              // Visible dashed outline so users know the editor is active
+              outline: "1.5px dashed rgba(79,139,255,0.7)",
+              outlineOffset: "4px",
+              padding: "2px",
               margin: 0,
               fontFamily: editingEl?.fontFamily || "Inter, sans-serif",
               fontSize: `${(editingEl?.fontSize || 24) * (zoom / 100)}px`,
               lineHeight: 1.2,
               fontWeight: 800,
-              outline: "none",
               resize: "none",
               whiteSpace: "pre-wrap",
               display: "block",
               overflow: "hidden",
+              caretColor: editingEl?.stroke || (theme === "dark" ? "#ffffff" : "#000000"),
             }}
           />
         </Box>

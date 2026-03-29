@@ -1,7 +1,13 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement } from "../types/svg";
 
 const STORAGE_KEY_PREFIX = "vibe_code_canvas_data_";
+
+// Combined history state so pushToHistory is always atomic (no stale closure)
+interface HistoryState {
+  histories: Record<string, SvgElement[][]>;
+  indexes: Record<string, number>;
+}
 
 export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") => {
   const [allElements, setAllElements] = useState<Record<string, SvgElement[]>>(() => {
@@ -14,21 +20,25 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
   });
 
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  
-  const [histories, setHistories] = useState<Record<string, SvgElement[][]>>({
-    moodboard: [[]],
-    designer: [[]],
-  });
-  const [historyIndexes, setHistoryIndexes] = useState<Record<string, number>>({
-    moodboard: 0,
-    designer: 0,
+
+  // Fix #2 & #8: Combined into one state object so updates are always atomic —
+  // no stale closure risk, and the index always stays in sync with the history array.
+  const [historyState, setHistoryState] = useState<HistoryState>({
+    histories: { moodboard: [[]], designer: [[]] },
+    indexes: { moodboard: 0, designer: 0 },
   });
 
   const [projectName, setProjectName] = useState<string>(() => {
+    // Fix: read from the actual activeMode key at init time
     return localStorage.getItem(`${STORAGE_KEY_PREFIX}${activeMode}_name`) || "Untitled Project";
   });
 
   const elements = useMemo(() => allElements[activeMode] || [], [allElements, activeMode]);
+
+  // Ref that always holds the latest elements — lets updateAndSave compute next elements
+  // without relying on the functional setState updater (which causes illegal nested setState).
+  const allElementsRef = useRef<Record<string, SvgElement[]>>(allElements);
+  useEffect(() => { allElementsRef.current = allElements; }, [allElements]);
 
   useEffect(() => {
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${activeMode}`, JSON.stringify(elements));
@@ -38,52 +48,65 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     localStorage.setItem(`${STORAGE_KEY_PREFIX}${activeMode}_name`, projectName);
   }, [projectName, activeMode]);
 
-  const pushToHistory = useCallback((newElements: SvgElement[]) => {
-    setHistories(prev => {
-      const currentHistory = prev[activeMode];
-      const currentIndex = historyIndexes[activeMode];
-      const newHistory = [...currentHistory.slice(0, currentIndex + 1), newElements].slice(-50);
-      return { ...prev, [activeMode]: newHistory };
-    });
-    setHistoryIndexes(prev => ({ ...prev, [activeMode]: Math.min(prev[activeMode] + 1, 49) }));
-  }, [activeMode, historyIndexes]);
+  // Fix #2 & #8: purely inside the updater — no stale closures possible
+  const pushToHistory = useCallback(
+    (newElements: SvgElement[]) => {
+      setHistoryState((prev) => {
+        const currentHistory = prev.histories[activeMode] ?? [[]];
+        const currentIndex = prev.indexes[activeMode] ?? 0;
+        const trimmed = currentHistory.slice(0, currentIndex + 1);
+        const newHistory = [...trimmed, newElements].slice(-50);
+        const newIndex = newHistory.length - 1;
+        return {
+          histories: { ...prev.histories, [activeMode]: newHistory },
+          indexes: { ...prev.indexes, [activeMode]: newIndex },
+        };
+      });
+    },
+    [activeMode],
+  );
 
   const undo = useCallback(() => {
-    const currentIndex = historyIndexes[activeMode];
-    const currentHistory = histories[activeMode];
-    if (currentIndex > 0) {
-      const prevIndex = currentIndex - 1;
-      const prevElements = currentHistory[prevIndex];
-      setAllElements(prev => ({ ...prev, [activeMode]: prevElements }));
-      setHistoryIndexes(prev => ({ ...prev, [activeMode]: prevIndex }));
-      setSelectedIds([]);
-    } else if (currentIndex === 0) {
-      setAllElements(prev => ({ ...prev, [activeMode]: [] }));
-      setHistoryIndexes(prev => ({ ...prev, [activeMode]: -1 }));
-      setSelectedIds([]);
-    }
-  }, [activeMode, historyIndexes, histories]);
+    setHistoryState((prev) => {
+      const currentIndex = prev.indexes[activeMode] ?? 0;
+      const currentHistory = prev.histories[activeMode] ?? [[]];
+      if (currentIndex > 0) {
+        const prevIndex = currentIndex - 1;
+        setAllElements((els) => ({ ...els, [activeMode]: currentHistory[prevIndex] }));
+        setSelectedIds([]);
+        return { ...prev, indexes: { ...prev.indexes, [activeMode]: prevIndex } };
+      } else if (currentIndex === 0) {
+        setAllElements((els) => ({ ...els, [activeMode]: [] }));
+        setSelectedIds([]);
+        return { ...prev, indexes: { ...prev.indexes, [activeMode]: -1 } };
+      }
+      return prev;
+    });
+  }, [activeMode]);
 
   const redo = useCallback(() => {
-    const currentIndex = historyIndexes[activeMode];
-    const currentHistory = histories[activeMode];
-    if (currentIndex < currentHistory.length - 1) {
-      const nextIndex = currentIndex + 1;
-      const nextElements = currentHistory[nextIndex];
-      setAllElements(prev => ({ ...prev, [activeMode]: nextElements }));
-      setHistoryIndexes(prev => ({ ...prev, [activeMode]: nextIndex }));
-      setSelectedIds([]);
-    }
-  }, [activeMode, historyIndexes, histories]);
+    setHistoryState((prev) => {
+      const currentIndex = prev.indexes[activeMode] ?? 0;
+      const currentHistory = prev.histories[activeMode] ?? [[]];
+      if (currentIndex < currentHistory.length - 1) {
+        const nextIndex = currentIndex + 1;
+        setAllElements((els) => ({ ...els, [activeMode]: currentHistory[nextIndex] }));
+        setSelectedIds([]);
+        return { ...prev, indexes: { ...prev.indexes, [activeMode]: nextIndex } };
+      }
+      return prev;
+    });
+  }, [activeMode]);
 
+  // Fix: no longer calls setState inside a setState updater.
+  // Computes the next elements up-front using the ref, then calls both setters
+  // as siblings in the same event — React 18 batches them into one commit.
   const updateAndSave = useCallback(
-    (newElements: SvgElement[] | ((prev: SvgElement[]) => SvgElement[])) => {
-      setAllElements((prev) => {
-        const currentModeElements = prev[activeMode] || [];
-        const next = typeof newElements === "function" ? newElements(currentModeElements) : newElements;
-        pushToHistory(next);
-        return { ...prev, [activeMode]: next };
-      });
+    (update: SvgElement[] | ((prev: SvgElement[]) => SvgElement[])) => {
+      const currentModeElements = allElementsRef.current[activeMode] || [];
+      const next = typeof update === "function" ? update(currentModeElements) : update;
+      setAllElements((prev) => ({ ...prev, [activeMode]: next }));
+      pushToHistory(next);
     },
     [activeMode, pushToHistory],
   );
@@ -154,15 +177,33 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     [updateAndSave],
   );
 
+  // Fix #4: addPoint still bypasses history for performance during drawing
+  // (pushing a history entry per mouse-move would be too expensive).
+  // Canvas must call finalizeDrawing() on mouseUp to commit the stroke.
   const addPoint = useCallback(
     (id: string, x: number, y: number) => {
       setAllElements((prev) => {
         const current = prev[activeMode] || [];
-        const next = current.map((el) => (el.id === id ? { ...el, points: [...(el.points || []), { x, y }] } : el));
+        const next = current.map((el) =>
+          el.id === id ? { ...el, points: [...(el.points || []), { x, y }] } : el
+        );
         return { ...prev, [activeMode]: next };
       });
     },
     [activeMode],
+  );
+
+  // Fix #4: Called by Canvas after pencil stroke ends to push a history snapshot
+  const finalizeDrawing = useCallback(
+    (id: string) => {
+      setAllElements((prev) => {
+        const current = prev[activeMode] || [];
+        pushToHistory(current);
+        return prev; // no change to elements, just snapshot
+      });
+      void id; // id kept for potential future per-element logic
+    },
+    [activeMode, pushToHistory],
   );
 
   const removeElements = useCallback(
@@ -177,7 +218,13 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     (ids: string[]) => {
       updateAndSave((prev) => {
         const toDup = prev.filter((el) => ids.includes(el.id));
-        const newEls = toDup.map((el) => ({ ...el, id: Math.random().toString(36).substring(2, 11), x: el.x + 20, y: el.y + 20, name: `${el.name} (Copy)` }));
+        const newEls = toDup.map((el) => ({
+          ...el,
+          id: Math.random().toString(36).substring(2, 11),
+          x: el.x + 20,
+          y: el.y + 20,
+          name: `${el.name} (Copy)`,
+        }));
         return [...prev, ...newEls];
       });
     },
@@ -218,25 +265,27 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     [updateAndSave],
   );
 
+  // Fix #3/#6: removed the `< 2` guard — single-element calls are now no-ops
+  // (min===max so all alignments resolve to the element's own position).
   const alignElements = useCallback(
     (ids: string[], alignment: "left" | "center" | "right" | "top" | "v-center" | "bottom") => {
       updateAndSave((prev) => {
         const selected = prev.filter((el) => ids.includes(el.id));
-        if (selected.length < 2) return prev;
-        let minX = Math.min(...selected.map(el => el.x));
-        let maxX = Math.max(...selected.map(el => el.x + (el.width || 0)));
-        let minY = Math.min(...selected.map(el => el.y));
-        let maxY = Math.max(...selected.map(el => el.y + (el.height || 0)));
-        return prev.map(el => {
+        if (selected.length < 1) return prev;
+        const minX = Math.min(...selected.map((el) => el.x));
+        const maxX = Math.max(...selected.map((el) => el.x + (el.width || 0)));
+        const minY = Math.min(...selected.map((el) => el.y));
+        const maxY = Math.max(...selected.map((el) => el.y + (el.height || 0)));
+        return prev.map((el) => {
           if (!ids.includes(el.id)) return el;
           switch (alignment) {
-            case "left": return { ...el, x: minX };
-            case "center": return { ...el, x: minX + (maxX - minX) / 2 - (el.width || 0) / 2 };
-            case "right": return { ...el, x: maxX - (el.width || 0) };
-            case "top": return { ...el, y: minY };
+            case "left":     return { ...el, x: minX };
+            case "center":   return { ...el, x: minX + (maxX - minX) / 2 - (el.width || 0) / 2 };
+            case "right":    return { ...el, x: maxX - (el.width || 0) };
+            case "top":      return { ...el, y: minY };
             case "v-center": return { ...el, y: minY + (maxY - minY) / 2 - (el.height || 0) / 2 };
-            case "bottom": return { ...el, y: maxY - (el.height || 0) };
-            default: return el;
+            case "bottom":   return { ...el, y: maxY - (el.height || 0) };
+            default:         return el;
           }
         });
       });
@@ -249,8 +298,14 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     setSelectedIds([]);
   }, [updateAndSave]);
 
-  const selectedElements = useMemo(() => elements.filter((el) => selectedIds.includes(el.id)), [elements, selectedIds]);
+  const selectedElements = useMemo(
+    () => elements.filter((el) => selectedIds.includes(el.id)),
+    [elements, selectedIds],
+  );
   const selectedElement = selectedElements[0] || null;
+
+  const currentIndex = historyState.indexes[activeMode] ?? 0;
+  const currentHistory = historyState.histories[activeMode] ?? [[]];
 
   return {
     elements,
@@ -262,6 +317,7 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     removeElements,
     toggleVisibility,
     addPoint,
+    finalizeDrawing,
     duplicateElements,
     bringToFront,
     sendToBack,
@@ -270,8 +326,8 @@ export const useSvgStore = (activeMode: "moodboard" | "designer" = "moodboard") 
     clearCanvas,
     undo,
     redo,
-    canUndo: historyIndexes[activeMode] > 0,
-    canRedo: historyIndexes[activeMode] < histories[activeMode].length - 1,
+    canUndo: currentIndex > 0,
+    canRedo: currentIndex < currentHistory.length - 1,
     selectedElements,
     selectedElement,
     projectName,
