@@ -30,7 +30,7 @@ const PRESETS: CanvasSize[] = [
   { label: "LinkedIn Banner", width: 1584, height: 396 },
 ];
 
-const Dashboard: React.FC<DashboardProps> = ({ projects, onCreateProject, onLoadProject, onDeleteProject, theme }) => {
+const Dashboard: React.FC<DashboardProps> = ({ projects, onCreateProject, onLoadProject, onDeleteProject, theme: _theme }) => {
   const [search, setSearch] = useState("");
   const [showCustom, setShowCustom] = useState(false);
   const [customSize, setCustomSize] = useState({ width: 1000, height: 1000 });
