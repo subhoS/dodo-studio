@@ -65,21 +65,22 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
       elevation={24}
       sx={{
         display: "flex",
+        flexWrap: "wrap", // Allow wrapping on small screens
         alignItems: "center",
-        p: 0.75,
-        px: 1.5,
-        gap: 1,
+        p: { xs: 0.5, md: 0.75 },
+        px: { xs: 1, md: 1.5 },
+        gap: { xs: 0.5, md: 1 },
         borderRadius: "20px",
         border: `1px solid ${borderColor}`,
         bgcolor: bgColor,
-        // ↓ THE KEY FIX: explicit color so all `color:"inherit"` children are visible
         color: textColor,
         backdropFilter: "blur(30px)",
         boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
-        maxWidth: "calc(100vw - 120px)",
-        overflowX: "auto",
-        "&::-webkit-scrollbar": { height: "3px" },
-        "&::-webkit-scrollbar-thumb": { bgcolor: "rgba(79,139,255,0.4)", borderRadius: "3px" },
+        maxWidth: "calc(100vw - 100px)",
+        maxHeight: "200px", // Prevent it from getting too tall when wrapping
+        overflowY: "auto",
+        scrollbarWidth: "none",
+        "&::-webkit-scrollbar": { display: "none" },
       }}
     >
       {/* — Element type badge — */}

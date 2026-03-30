@@ -33,9 +33,12 @@ interface CanvasProps {
   activeMode?: "moodboard" | "designer";
   artboardSize?: { width: number; height: number };
   onUpdateZoom: (val: number, isAbsolute?: boolean) => void;
+  eraserSize: number;
+  eraserMode: "object" | "freeform";
+  eraseFromPencil: (id: string, centers: { x: number; y: number }[], radius: number) => void;
 }
 
-type DragMode = "move" | "create" | "resize" | "select" | "pencil" | "group-resize" | "group-rotate";
+type DragMode = "move" | "create" | "resize" | "select" | "pencil" | "group-resize" | "group-rotate" | "eraser";
 
 const Canvas: React.FC<CanvasProps> = ({
   elements,
@@ -63,6 +66,9 @@ const Canvas: React.FC<CanvasProps> = ({
   gridEnabled = true,
   activeMode = "moodboard",
   artboardSize = { width: 1080, height: 1080 },
+  eraserSize,
+  eraserMode,
+  eraseFromPencil,
 }) => {
   const [dragInfo, setDragInfo] = useState<{
     mode: DragMode; id?: string; startX: number; startY: number; handle?: string;
@@ -82,6 +88,8 @@ const Canvas: React.FC<CanvasProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [snappingLines, setSnappingLines] = useState<{ x?: number; y?: number } | null>(null);
+  const lastEraserPosRef = useRef<{ x: number; y: number } | null>(null);
+  const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
 
   const drawingIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -164,6 +172,7 @@ const Canvas: React.FC<CanvasProps> = ({
           case "a": onSetActiveTool("arrow"); break;
           case "t": onSetActiveTool("text"); break;
           case "p": onSetActiveTool("pencil"); break;
+          case "e": onSetActiveTool("eraser"); break;
           case "backspace":
           case "delete": if (selectedIds.length > 0) onRemoveElements(selectedIds); break;
         }
@@ -199,6 +208,10 @@ const Canvas: React.FC<CanvasProps> = ({
     if (activeTool === "pencil") {
       const id = onAddElement("pencil", { x: pos.x, y: pos.y, points: [pos] });
       drawingIdRef.current = id; setDragInfo({ mode: "pencil", startX: pos.x, startY: pos.y });
+      return;
+    }
+    if (activeTool === "eraser") {
+      setDragInfo({ mode: "eraser", startX: pos.x, startY: pos.y });
       return;
     }
     if (["rect", "circle", "line", "arrow"].includes(activeTool)) {
@@ -256,6 +269,9 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const pos = getMousePos(e);
+    if (activeTool === "eraser") {
+       setEraserPos(pos);
+    }
     if (isPanning && dragInfo) {
       const dx = (e.clientX - dragInfo.startX) / (zoom / 100), dy = (e.clientY - dragInfo.startY) / (zoom / 100);
       setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); setDragInfo({ ...dragInfo, startX: e.clientX, startY: e.clientY });
@@ -309,6 +325,50 @@ const Canvas: React.FC<CanvasProps> = ({
         }
         onUpdateElement(dragInfo.id, { x: newX, y: newY, width: newWidth, height: newHeight });
       }
+    } else if (dragInfo && dragInfo.mode === "eraser") {
+      // ERASER COLLISION LOGIC
+      const eraserRect = { 
+        x: pos.x - eraserSize, 
+        y: pos.y - eraserSize, 
+        width: eraserSize * 2, 
+        height: eraserSize * 2 
+      };
+
+      // INTERPOLATE SWIPE POINTS FOR SMOOTHNESS
+      const swipePoints: { x: number; y: number }[] = [pos];
+      if (lastEraserPosRef.current) {
+        const last = lastEraserPosRef.current;
+        const dist = Math.sqrt((pos.x - last.x) ** 2 + (pos.y - last.y) ** 2);
+        const steps = Math.ceil(dist / 4); // Step every 4px
+        for (let i = 1; i < steps; i++) {
+          swipePoints.push({
+            x: last.x + (pos.x - last.x) * (i / steps),
+            y: last.y + (pos.y - last.y) * (i / steps)
+          });
+        }
+      }
+      lastEraserPosRef.current = pos;
+
+      if (eraserMode === "freeform") {
+        const toDeleteObjects: string[] = [];
+        elements.forEach(el => {
+          if (!el.visible || el.locked) return;
+          
+          if (el.type === "pencil") {
+            // High-precision segment-based erase
+            eraseFromPencil(el.id, swipePoints, eraserSize);
+          } else {
+            // FALLBACK TO BOX CHECK FOR OTHER SHAPES IN FREEFORM MODE
+            if (isElementInBox(el, eraserRect)) toDeleteObjects.push(el.id);
+          }
+        });
+        if (toDeleteObjects.length > 0) onRemoveElements(toDeleteObjects);
+      } else {
+        const toDelete = elements
+          .filter(el => el.visible && !el.locked && isElementInBox(el, eraserRect))
+          .map(el => el.id);
+        if (toDelete.length > 0) onRemoveElements(toDelete);
+      }
     } else if (dragInfo.mode === "move") {
       const dx = pos.x - dragInfo.startX, dy = pos.y - dragInfo.startY;
       onUpdateElements(selectedIds, el => {
@@ -328,7 +388,9 @@ const Canvas: React.FC<CanvasProps> = ({
             const parentSection = sections.find(s => {
                const b = getElementBounds(el);
                const sb = getElementBounds(s);
-               return b.x >= sb.x && b.y >= sb.y && (b.x + b.width) <= (sb.x + sb.width) && (b.y + b.height) <= (sb.y + sb.height);
+               const cx = b.x + b.width / 2;
+               const cy = b.y + b.height / 2;
+               return cx >= sb.x && cx <= (sb.x + sb.width) && cy >= sb.y && cy <= (sb.y + sb.height);
             });
             if (parentSection && el.parentId !== parentSection.id) onUpdateElement(el.id, { parentId: parentSection.id });
             else if (!parentSection && el.parentId) onUpdateElement(el.id, { parentId: undefined });
@@ -477,11 +539,29 @@ const Canvas: React.FC<CanvasProps> = ({
     if (dragInfo?.mode === "pencil" && drawingIdRef.current) {
       onFinalizeDrawing(drawingIdRef.current);
     }
+
+    // AUTO-PARENT ON CREATE
+    if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil") && dragInfo.id) {
+       const el = elements.find(e => e.id === dragInfo.id);
+       if (el) {
+          const sections = elements.filter(e => e.type === "section" && e.id !== el.id);
+          const parentSection = sections.find(s => {
+             const b = getElementBounds(el);
+             const sb = getElementBounds(s);
+             const cx = b.x + b.width / 2;
+             const cy = b.y + b.height / 2;
+             return cx >= sb.x && cx <= (sb.x + sb.width) && cy >= sb.y && cy <= (sb.y + sb.height);
+          });
+          if (parentSection) onUpdateElement(el.id, { parentId: parentSection.id });
+       }
+    }
+
     if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil")) {
       onSetActiveTool("selection");
     }
     setSnappingLines(null);
-    setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null);
+    setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null); setEraserPos(null);
+    lastEraserPosRef.current = null;
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -564,7 +644,7 @@ const Canvas: React.FC<CanvasProps> = ({
         backgroundSize: `${30*(zoom/100)}px ${30*(zoom/100)}px`, 
         backgroundPosition: `${(offset.x*(zoom/100))%(30*(zoom/100))}px ${(offset.y*(zoom/100))%(30*(zoom/100))}px`,
         transition: "background-color 0.3s ease",
-        cursor: isPanning ? "grabbing" : ["rect", "circle", "line", "arrow", "section"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
+        cursor: isPanning ? "grabbing" : activeTool === "eraser" ? "none" : ["rect", "circle", "line", "arrow", "section"].includes(activeTool) ? "crosshair" : activeTool === "text" ? "text" : activeTool === "pencil" ? "crosshair" : hoveredId ? "pointer" : "default"
       }} 
       onMouseDown={handleMouseDown} 
       onMouseMove={handleMouseMove} 
@@ -752,6 +832,19 @@ const Canvas: React.FC<CanvasProps> = ({
             />
           )}
 
+          {/* ERASER CURSOR */}
+          {activeTool === "eraser" && eraserPos && (
+             <circle 
+               cx={eraserPos.x} 
+               cy={eraserPos.y} 
+               r={eraserSize} 
+               fill="rgba(255, 60, 60, 0.2)" 
+               stroke="#ff4d4d" 
+               strokeWidth="1" 
+               style={{ pointerEvents: "none" }}
+             />
+          )}
+
           {/* SNAPPING GUIDES */}
           {snappingLines && (
             <g style={{ pointerEvents: "none" }}>
@@ -820,13 +913,14 @@ const Canvas: React.FC<CanvasProps> = ({
               margin: 0,
               fontFamily: editingEl?.fontFamily || "Inter, sans-serif",
               fontSize: `${(editingEl?.fontSize || 24) * (zoom / 100)}px`,
-              lineHeight: 1.2,
+              lineHeight: 1.25,
               fontWeight: 800,
               resize: "none",
               whiteSpace: "pre-wrap",
               display: "block",
               overflow: "hidden",
               caretColor: editingEl?.stroke || (theme === "dark" ? "#ffffff" : "#000000"),
+              transform: `translateY(${(editingEl?.fontSize || 24) * 0.1 * (zoom/100)}px)`
             }}
           />
         </Box>

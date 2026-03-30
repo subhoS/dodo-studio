@@ -113,6 +113,28 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
     );
   }
 
+  if (element.type === "section") {
+    return (
+      <g style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer" }}>
+        <rect 
+          x={element.x} y={element.y} width={element.width || 0} height={element.height || 0} rx={12} 
+          fill={theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"} 
+          stroke={isSelected ? "#22d3ee" : (theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)")} 
+          strokeWidth={isSelected ? 2 : 1.5}
+          strokeDasharray={isSelected ? undefined : "6 4"}
+        />
+        <g transform={`translate(${element.x}, ${element.y - 24})`}>
+           <text 
+             x={0} y={16} fill={isSelected ? "#22d3ee" : (theme === "dark" ? "rgba(255,255,255,0.4)" : "rgba(0,0,0,0.4)")} 
+             style={{ fontSize: "12px", fontWeight: 700, userSelect: "none", pointerEvents: "none" }}
+           >
+             {element.name}
+           </text>
+        </g>
+      </g>
+    );
+  }
+
   return (
     <g transform={`rotate(${element.rotation || 0}, ${centerX}, ${centerY})`} style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer", opacity: element.opacity ?? 1 }}>
       <defs>
@@ -172,27 +194,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             {element.type === "path" && element.content && (
               <path d={element.content} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />
             )}
-            {element.type === "section" && (
-              <g>
-                {/* Main section body */}
-                <rect 
-                  x={element.x} y={element.y} width={element.width || 0} height={element.height || 0} rx={12} 
-                  fill={theme === "dark" ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)"} 
-                  stroke={theme === "dark" ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.1)"} 
-                  strokeWidth="1.5"
-                />
-                {/* Header title area */}
-                <g transform={`translate(${element.x + 10}, ${element.y + 10})`}>
-                   <rect x={-4} y={-4} width={(element.name.length * 7) + 20} height={24} rx={6} fill="#4f8bff" />
-                   <text 
-                     x={6} y={13} fill="white" 
-                     style={{ fontSize: "10px", fontWeight: 900, textTransform: "uppercase", letterSpacing: "1px", userSelect: "none" }}
-                   >
-                     {element.name}
-                   </text>
-                </g>
-              </g>
-            )}
+            {/* Sections are handled outside this block now */}
           </>
         ) : (
           <>

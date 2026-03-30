@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement, Project, CanvasSize } from "../types/svg";
-import { simplifyPath } from "../utils/geometry";
+import { simplifyPath, isSegmentIntersectingCircle } from "../utils/geometry";
 
 const PROJECTS_STORAGE_KEY = "vibe_code_projects_v2";
 const ACTIVE_PROJECT_KEY = "vibe_code_active_id";
@@ -167,14 +167,39 @@ export const useSvgStore = () => {
   const updateElement = useCallback(
     (id: string, updates: Partial<SvgElement>) => {
       updateAndSave((prev) => {
-        const toUpdate = [id];
-        const findChildren = (pid: string) => {
-          prev.forEach(el => { if (el.parentId === pid) { toUpdate.push(el.id); findChildren(el.id); } });
-        };
-        findChildren(id);
+        const target = prev.find(el => el.id === id);
+        if (!target) return prev;
+
+        const toUpdate: Record<string, Partial<SvgElement>> = { [id]: updates };
+        
+        // RECURSIVE MOVEMENT FOR SECTIONS
+        if (target.type === "section" && (updates.x !== undefined || updates.y !== undefined)) {
+          const dx = updates.x !== undefined ? updates.x - target.x : 0;
+          const dy = updates.y !== undefined ? updates.y - target.y : 0;
+
+          const findAndShiftChildren = (pid: string) => {
+            prev.forEach(el => {
+              if (el.parentId === pid) {
+                const childUpdates: Partial<SvgElement> = {
+                  x: el.x + dx,
+                  y: el.y + dy
+                };
+                if (el.x2 !== undefined) childUpdates.x2 = el.x2 + dx;
+                if (el.y2 !== undefined) childUpdates.y2 = el.y2 + dy;
+                if (el.points) childUpdates.points = el.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                
+                toUpdate[el.id] = childUpdates;
+                findAndShiftChildren(el.id);
+              }
+            });
+          };
+          findAndShiftChildren(id);
+        }
+
         return prev.map((el) => {
-          if (!toUpdate.includes(el.id)) return el;
-          return el.id === id ? { ...el, ...updates } : el;
+          const up = toUpdate[el.id];
+          if (!up) return el;
+          return { ...el, ...up };
         });
       });
     },
@@ -184,19 +209,43 @@ export const useSvgStore = () => {
   const updateElements = useCallback(
     (ids: string[], updates: Partial<SvgElement> | ((el: SvgElement) => Partial<SvgElement>)) => {
       updateAndSave((prev) => {
-        const allTargetIds = new Set(ids);
-        const findChildren = (pid: string) => {
-          prev.forEach(el => {
-            if (el.parentId === pid && !allTargetIds.has(el.id)) {
-              allTargetIds.add(el.id);
-              findChildren(el.id);
-            }
-          });
-        };
-        ids.forEach(id => findChildren(id));
-        return prev.map((el) => {
-          if (!allTargetIds.has(el.id)) return el;
+        const allUpdates: Record<string, Partial<SvgElement>> = {};
+        
+        // 1. First, determine the updates for the primary selected elements
+        ids.forEach(id => {
+          const el = prev.find(e => e.id === id);
+          if (!el) return;
           const up = typeof updates === "function" ? updates(el) : updates;
+          allUpdates[id] = up;
+
+          // 2. If it's a section moving, calculate delta and apply to children
+          if (el.type === "section" && (up.x !== undefined || up.y !== undefined)) {
+            const dx = up.x !== undefined ? up.x - el.x : 0;
+            const dy = up.y !== undefined ? up.y - el.y : 0;
+
+            const findAndShiftChildren = (pid: string) => {
+              prev.forEach(child => {
+                if (child.parentId === pid && !ids.includes(child.id)) {
+                  const childUp: Partial<SvgElement> = {
+                    x: child.x + dx,
+                    y: child.y + dy
+                  };
+                  if (child.x2 !== undefined) childUp.x2 = child.x2 + dx;
+                  if (child.y2 !== undefined) childUp.y2 = child.y2 + dy;
+                  if (child.points) childUp.points = child.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+                  
+                  allUpdates[child.id] = childUp;
+                  findAndShiftChildren(child.id);
+                }
+              });
+            };
+            findAndShiftChildren(id);
+          }
+        });
+
+        return prev.map((el) => {
+          const up = allUpdates[el.id];
+          if (!up) return el;
           return { ...el, ...up };
         });
       });
@@ -246,6 +295,54 @@ export const useSvgStore = () => {
       });
     },
     [activeProjectId, pushToHistory],
+  );
+
+  const eraseFromPencil = useCallback(
+    (id: string, centers: { x: number; y: number }[], radius: number) => {
+      updateAndSave((prev) => {
+        const el = prev.find(e => e.id === id);
+        if (!el || el.type !== "pencil" || !el.points || el.points.length < 2) return prev;
+
+        const remainingSegments: { x: number; y: number }[][] = [];
+        let currentSegment: { x: number; y: number }[] = [el.points[0]];
+
+        for (let i = 1; i < el.points.length; i++) {
+          const p1 = el.points[i - 1];
+          const p2 = el.points[i];
+          
+          // Check if this segment is hit by ANY of the swipe points
+          const isHit = centers.some(c => isSegmentIntersectingCircle(p1, p2, c, radius));
+
+          if (isHit) {
+            // End the current segment if it has points
+            if (currentSegment.length > 0) {
+              remainingSegments.push(currentSegment);
+              currentSegment = [];
+            }
+            // Skip this point (it's the end of a cut)
+          } else {
+            // Keep the segment
+            currentSegment.push(p2);
+          }
+        }
+        if (currentSegment.length > 0) remainingSegments.push(currentSegment);
+
+        if (remainingSegments.length === 0) return prev.filter(e => e.id !== id);
+
+        // Replace original with segments
+        const segmentsAsElements = remainingSegments.map((pts, i) => ({
+          ...el,
+          id: i === 0 ? el.id : Math.random().toString(36).substring(2, 11),
+          points: pts,
+          x: pts[0].x,
+          y: pts[0].y
+        }));
+
+        const otherElements = prev.filter(e => e.id !== id);
+        return [...otherElements, ...segmentsAsElements];
+      });
+    },
+    [updateAndSave]
   );
 
   const removeElements = useCallback(
@@ -450,6 +547,7 @@ export const useSvgStore = () => {
     canRedo: currentIndex < currentHistory.length - 1,
     selectedElements,
     selectedElement,
+    eraseFromPencil,
     updateProjectName: (name: string) => {
       if (!activeProjectId) return;
       setProjects(prev => prev.map(p => p.id === activeProjectId ? { ...p, name } : p));

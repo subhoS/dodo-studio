@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Box, IconButton, Tooltip, Stack, Typography, Button, Divider 
+  Box, IconButton, Tooltip, Stack, Typography, Button, Divider, Slider 
 } from "@mui/material";
 import { 
   Square, Circle, MousePointer2, Pencil, Type, Layers as LayersIcon, 
   Minus as LineIcon, ArrowRight as ArrowIcon, Edit2 as EditIcon, 
   Upload as ImportIcon, Trash2 as TrashIcon, Maximize, Grid as GridIcon,
   Sun as LightModeIcon, Moon as DarkModeIcon, 
-  ChevronLeft, Share2, Download, User, Library
+  ChevronLeft, Share2, Download, User, Library, Eraser as EraserIcon
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
 import DodoLogo from "./components/DodoLogo";
@@ -29,7 +29,7 @@ const App: React.FC = () => {
     addPoint, finalizeDrawing,
     undo, redo, clearCanvas,
     selectedIds, setSelectedIds,
-    selectedElement
+    selectedElement, eraseFromPencil
   } = useSvgStore();
 
   const [activeTool, setActiveTool] = useState("selection");
@@ -41,6 +41,8 @@ const App: React.FC = () => {
   const [view, setView] = useState<"dashboard" | "editor">("dashboard");
   const [isEditingName, setIsEditingName] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+  const [eraserSize, setEraserSize] = useState(10);
+  const [eraserMode, setEraserMode] = useState<"object" | "freeform">("object");
 
   const activeMode = activeProject?.mode || "designer";
   const artboardSize = activeProject?.artboardSize || { width: 1000, height: 1000 };
@@ -143,6 +145,7 @@ const App: React.FC = () => {
     { id: "pencil", label: "Pencil (P)", icon: <Pencil /> },
     { id: "text", label: "Text (T)", icon: <Type /> },
     { id: "library", label: "Library", icon: <Library /> },
+    { id: "eraser", label: "Eraser (E)", icon: <EraserIcon /> },
     { id: "section", label: "Section (S)", icon: <Maximize /> },
     { id: "import", label: "Import (I)", icon: <ImportIcon /> },
     { id: "grid", label: "Grid (G)", icon: <GridIcon /> },
@@ -230,8 +233,12 @@ const App: React.FC = () => {
           sx={{ 
             position: "absolute", left: 20, top: "50%", transform: "translateY(-50%)",
             width: 64, borderRadius: "16px", zIndex: 1100,
-            display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 1,
-            boxShadow: "0 10px 40px rgba(0,0,0,0.5)"
+            display: "flex", flexDirection: "column", alignItems: "center", py: 2, gap: 0.5,
+            boxShadow: "0 10px 40px rgba(0,0,0,0.5)",
+            maxHeight: "calc(100vh - 140px)",
+            overflowY: "auto",
+            scrollbarWidth: "none", // Hide for Firefox
+            "&::-webkit-scrollbar": { display: "none" } // Hide for Chrome
           }}
         >
           {toolbarTools.map((tool) => {
@@ -318,10 +325,21 @@ const App: React.FC = () => {
             gridEnabled={gridEnabled} 
             activeMode={activeMode} 
             artboardSize={artboardSize} 
+            eraserSize={eraserSize}
+            eraserMode={eraserMode}
+            eraseFromPencil={eraseFromPencil}
           />
 
           {selectedElement && (
-            <Box sx={{ position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", zIndex: 1200 }}>
+            <Box sx={{ 
+              position: "absolute", 
+              bottom: (activeTool === "eraser") ? 110 : 30, // Stack above eraser settings if both active
+              left: "50%", 
+              transform: "translateX(-50%)", 
+              zIndex: 1200,
+              transition: "bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
+              maxWidth: "calc(100% - 40px)"
+            }}>
               <PropertyBar
                 element={selectedElement}
                 onUpdate={updateElement}
@@ -377,6 +395,57 @@ const App: React.FC = () => {
           <Typography className="heading-font" sx={{ fontWeight: 800, fontSize: "1.1rem" }}>?</Typography>
         </IconButton>
       </Tooltip>
+
+      {/* Eraser Size Tooltip/Slider when eraser is active */}
+      {activeTool === "eraser" && (
+        <Box 
+          className="glass-panel" 
+          sx={{ 
+            position: "absolute", bottom: 30, left: "50%", transform: "translateX(-50%)", 
+            px: 3, py: 1, borderRadius: "20px", display: "flex", alignItems: "center", gap: 2,
+            zIndex: 2000, minWidth: 200, boxShadow: "0 10px 40px rgba(0,0,0,0.4)"
+          }}
+        >
+          <Stack direction="row" spacing={2} alignItems="center" sx={{ width: "100%" }}>
+            <EraserIcon size={18} color="#22d3ee" />
+            <Box sx={{ flexGrow: 1, px: 1 }}>
+              <Typography sx={{ fontSize: "0.6rem", fontWeight: 900, opacity: 0.5, mb: -0.5 }}>ERASER SIZE: {eraserSize}px</Typography>
+              <Slider 
+                size="small" min={5} max={100} value={eraserSize} 
+                onChange={(_, v) => setEraserSize(v as number)}
+                sx={{ color: "#22d3ee", py: 1 }}
+              />
+            </Box>
+            <Divider orientation="vertical" flexItem sx={{ height: 24, alignSelf: "center", mx: 1 }} />
+            <Stack direction="row" spacing={0.5} sx={{ p: 0.5, bgcolor: "rgba(255,255,255,0.05)", borderRadius: "12px" }}>
+              <Button 
+                size="small"
+                onClick={() => setEraserMode("object")}
+                sx={{ 
+                  fontSize: "0.6rem", px: 1.5, py: 0.5, borderRadius: "8px", 
+                  bgcolor: eraserMode === "object" ? "#22d3ee" : "transparent",
+                  color: eraserMode === "object" ? "#0f172a" : "white",
+                  "&:hover": { bgcolor: eraserMode === "object" ? "#22d3ee" : "rgba(255,255,255,0.1)" }
+                }}
+              >
+                Object
+              </Button>
+              <Button 
+                size="small"
+                onClick={() => setEraserMode("freeform")}
+                sx={{ 
+                  fontSize: "0.6rem", px: 1.5, py: 0.5, borderRadius: "8px", 
+                  bgcolor: eraserMode === "freeform" ? "#22d3ee" : "transparent",
+                  color: eraserMode === "freeform" ? "#0f172a" : "white",
+                  "&:hover": { bgcolor: eraserMode === "freeform" ? "#22d3ee" : "rgba(255,255,255,0.1)" }
+                }}
+              >
+                Normal
+              </Button>
+            </Stack>
+          </Stack>
+        </Box>
+      )}
     </Box>
   );
 };

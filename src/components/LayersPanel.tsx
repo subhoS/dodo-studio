@@ -136,8 +136,8 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
 
   return (
     <Box sx={{
-      width: 280,
-      maxHeight: "calc(100vh - 120px)",
+      width: { xs: 240, md: 280 },
+      maxHeight: "calc(100vh - 180px)",
       borderRadius: "16px",
       border: `1px solid ${border}`,
       bgcolor: bg,

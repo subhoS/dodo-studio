@@ -13,7 +13,6 @@ const getMeasurementContext = () => {
 export const getTextBounds = (content: string, fontSize: number, fontFamily: string = "Inter, sans-serif") => {
   const ctx = getMeasurementContext();
   if (!ctx) {
-    // Fallback if canvas is not available
     const lines = content.split("\n");
     const longestLine = lines.reduce((max, line) => Math.max(max, line.length), 0);
     return { width: longestLine * (fontSize * 0.6), height: lines.length * fontSize * 1.2 };
@@ -86,22 +85,22 @@ export const isElementInBox = (element: SvgElement, box: Bounds): boolean => {
   );
 };
 
+export const getSqSegDist = (p: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }) => {
+  let x = p1.x, y = p1.y, dx = p2.x - x, dy = p2.y - y;
+  if (dx !== 0 || dy !== 0) {
+    let t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
+    if (t > 1) { x = p2.x; y = p2.y; }
+    else if (t > 0) { x += dx * t; y += dy * t; }
+  }
+  dx = p.x - x; dy = p.y - y;
+  return dx * dx + dy * dy;
+};
+
 export const simplifyPath = (points: { x: number; y: number }[], tolerance: number = 1): { x: number; y: number }[] => {
   if (points.length < 3) return points;
   
   const sqTolerance = tolerance * tolerance;
   
-  const getSqSegDist = (p: { x: number; y: number }, p1: { x: number; y: number }, p2: { x: number; y: number }) => {
-    let x = p1.x, y = p1.y, dx = p2.x - x, dy = p2.y - y;
-    if (dx !== 0 || dy !== 0) {
-      let t = ((p.x - x) * dx + (p.y - y) * dy) / (dx * dx + dy * dy);
-      if (t > 1) { x = p2.x; y = p2.y; }
-      else if (t > 0) { x += dx * t; y += dy * t; }
-    }
-    dx = p.x - x; dy = p.y - y;
-    return dx * dx + dy * dy;
-  };
-
   const simplifyStep = (pts: { x: number; y: number }[], first: number, last: number, sqTol: number, simplified: { x: number; y: number }[]) => {
     let maxSqDist = sqTol, index = -1;
     for (let i = first + 1; i < last; i++) {
@@ -119,4 +118,8 @@ export const simplifyPath = (points: { x: number; y: number }[], tolerance: numb
   simplifyStep(points, 0, points.length - 1, sqTolerance, simplified);
   simplified.push(points[points.length - 1]);
   return simplified;
+};
+
+export const isSegmentIntersectingCircle = (p1: { x: number; y: number }, p2: { x: number; y: number }, center: { x: number; y: number }, radius: number) => {
+  return getSqSegDist(center, p1, p2) <= radius * radius;
 };
