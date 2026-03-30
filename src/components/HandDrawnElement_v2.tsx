@@ -187,7 +187,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             )}
             {element.type === "svg" && element.svgContent && (
               <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/100}, ${(element.height||100)/100})`}
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/ (element.svgContent.includes('cx="50"') || element.svgContent.includes('width="100"') ? 100 : 24)}, ${(element.height||100)/ (element.svgContent.includes('cy="50"') || element.svgContent.includes('height="100"') ? 100 : 24)})`}
                 dangerouslySetInnerHTML={{ __html: element.svgContent }} 
               />
             )}
@@ -210,7 +210,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             )}
             {element.type === "svg" && element.svgContent && (
               <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/100}, ${(element.height||100)/100})`}
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/ (element.svgContent.includes('cx="50"') || element.svgContent.includes('width="100"') ? 100 : 24)}, ${(element.height||100)/ (element.svgContent.includes('cy="50"') || element.svgContent.includes('height="100"') ? 100 : 24)})`}
                 dangerouslySetInnerHTML={{ __html: element.svgContent }} 
               />
             )}

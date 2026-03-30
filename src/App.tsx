@@ -78,39 +78,131 @@ const App: React.FC = () => {
   }, [isEditingName]);
 
   const handleExportPNG = async () => {
-    const svgElement = document.querySelector("svg");
-    if (!svgElement) return;
-    const exportSvg = svgElement.cloneNode(true) as SVGSVGElement;
-    const contentGroup = exportSvg.querySelector("g");
-    if (!contentGroup) return;
+    if (elements.length === 0) return;
 
-    const scale = 2; // 2x for High DPI
-    let width = (activeMode === "designer" ? artboardSize.width : 2000) * scale;
-    let height = (activeMode === "designer" ? artboardSize.height : 1500) * scale;
+    const scale = 2; // 2x for Retina
+    let vbX: number, vbY: number, vbW: number, vbH: number;
 
-    const vb = activeMode === "designer" ? `${-artboardSize.width / 2} ${-artboardSize.height / 2} ${artboardSize.width} ${artboardSize.height}` : `0 0 2000 1500`;
-    exportSvg.setAttribute("viewBox", vb);
+    if (activeMode === "designer") {
+      vbX = -artboardSize.width / 2;
+      vbY = -artboardSize.height / 2;
+      vbW = artboardSize.width;
+      vbH = artboardSize.height;
+    } else {
+      // Moodboard: auto-fit to content bounds with padding
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      elements.forEach(el => {
+        if (!el.visible) return;
+        const b = (() => {
+          if (el.type === "line" || el.type === "arrow") {
+            const x1 = Math.min(el.x, el.x2 || el.x), y1 = Math.min(el.y, el.y2 || el.y);
+            const x2 = Math.max(el.x, el.x2 || el.x), y2 = Math.max(el.y, el.y2 || el.y);
+            return { x: x1, y: y1, w: Math.max(2, x2 - x1), h: Math.max(2, y2 - y1) };
+          } else if (el.type === "pencil" && el.points?.length) {
+            const xs = el.points.map(p => p.x), ys = el.points.map(p => p.y);
+            const px = Math.min(...xs), py = Math.min(...ys);
+            return { x: px, y: py, w: Math.max(2, Math.max(...xs) - px), h: Math.max(2, Math.max(...ys) - py) };
+          }
+          return { x: el.x, y: el.y, w: el.width || 100, h: el.height || 100 };
+        })();
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.w);
+        maxY = Math.max(maxY, b.y + b.h);
+      });
+      const pad = 40;
+      vbX = minX - pad; vbY = minY - pad;
+      vbW = maxX - minX + pad * 2;
+      vbH = maxY - minY + pad * 2;
+    }
+
+    const canvasW = vbW * scale;
+    const canvasH = vbH * scale;
+
+    // Build a clean SVG string from element data — no UI artifacts
+    const buildElementSvg = (el: typeof elements[0]): string => {
+      if (!el.visible) return "";
+      const rot = el.rotation ? `transform="rotate(${el.rotation}, ${el.x + (el.width || 0) / 2}, ${el.y + (el.height || 0) / 2})"` : "";
+      const opacity = (el.opacity ?? 1) !== 1 ? `opacity="${el.opacity}"` : "";
+
+      switch (el.type) {
+        case "rect":
+          return `<g ${rot} ${opacity}><rect x="${el.x}" y="${el.y}" width="${el.width || 0}" height="${el.height || 0}" fill="${el.fill}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" rx="${el.cornerRadius || 0}" ry="${el.cornerRadius || 0}" ${el.strokeStyle === "dashed" ? 'stroke-dasharray="8 8"' : el.strokeStyle === "dotted" ? 'stroke-dasharray="2 4"' : ""}/></g>`;
+        case "circle":
+          return `<g ${rot} ${opacity}><ellipse cx="${el.x + (el.width || 0) / 2}" cy="${el.y + (el.height || 0) / 2}" rx="${(el.width || 0) / 2}" ry="${(el.height || 0) / 2}" fill="${el.fill}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" ${el.strokeStyle === "dashed" ? 'stroke-dasharray="8 8"' : el.strokeStyle === "dotted" ? 'stroke-dasharray="2 4"' : ""}/></g>`;
+        case "line":
+          return `<g ${opacity}><line x1="${el.x}" y1="${el.y}" x2="${el.x2 || el.x}" y2="${el.y2 || el.y}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" ${el.strokeStyle === "dashed" ? 'stroke-dasharray="8 8"' : ""}/></g>`;
+        case "arrow": {
+          const ax1 = el.x, ay1 = el.y, ax2 = el.x2 || el.x, ay2 = el.y2 || el.y;
+          const angle = Math.atan2(ay2 - ay1, ax2 - ax1), headL = 15, headA = Math.PI / 6;
+          return `<g ${opacity}><line x1="${ax1}" y1="${ay1}" x2="${ax2}" y2="${ay2}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}"/>
+            <line x1="${ax2}" y1="${ay2}" x2="${ax2 - headL * Math.cos(angle - headA)}" y2="${ay2 - headL * Math.sin(angle - headA)}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}"/>
+            <line x1="${ax2}" y1="${ay2}" x2="${ax2 - headL * Math.cos(angle + headA)}" y2="${ay2 - headL * Math.sin(angle + headA)}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}"/></g>`;
+        }
+        case "pencil":
+          if (!el.points?.length) return "";
+          return `<g ${opacity}><polyline points="${el.points.map(p => `${p.x},${p.y}`).join(" ")}" fill="none" stroke="${el.stroke}" stroke-width="${el.strokeWidth}" stroke-linecap="round" stroke-linejoin="round"/></g>`;
+        case "text":
+          return `<g ${rot} ${opacity}><text x="${el.x}" y="${el.y}" dominant-baseline="hanging" style="font-family: ${el.fontFamily || "Inter, sans-serif"}; font-size: ${el.fontSize || 24}px; font-weight: 800; fill: ${el.stroke}; white-space: pre-wrap;">${(el.content || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</text></g>`;
+        case "image":
+          if (!el.content && !el.url) return "";
+          return `<g ${rot} ${opacity}><image href="${el.url || el.content}" x="${el.x}" y="${el.y}" width="${el.width || 100}" height="${el.height || 100}" preserveAspectRatio="xMidYMid meet"/></g>`;
+        case "svg":
+          if (!el.svgContent) return "";
+          return `<g ${rot} ${opacity} transform="translate(${el.x},${el.y}) scale(${(el.width || 100) / 100}, ${(el.height || 100) / 100})">${el.svgContent}</g>`;
+        case "path":
+          if (!el.content) return "";
+          return `<g ${rot} ${opacity}><path d="${el.content}" fill="${el.fill}" stroke="${el.stroke}" stroke-width="${el.strokeWidth}"/></g>`;
+        case "section":
+          return `<g ${opacity}><rect x="${el.x}" y="${el.y}" width="${el.width || 0}" height="${el.height || 0}" rx="12" fill="rgba(128,128,128,0.03)" stroke="rgba(128,128,128,0.15)" stroke-width="1.5" stroke-dasharray="6 4"/></g>`;
+        default:
+          return "";
+      }
+    };
+
+    const bgFill = theme === "dark" ? "#1a1d21" : "#ffffff";
+    const sortedEls = [...elements].sort((a, _b) => (a.type === "section" ? -1 : 1));
+    const contentSvg = sortedEls.map(buildElementSvg).join("\n");
+
+    const svgStr = `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasW}" height="${canvasH}" viewBox="${vbX} ${vbY} ${vbW} ${vbH}">
+      <rect x="${vbX}" y="${vbY}" width="${vbW}" height="${vbH}" fill="${bgFill}"/>
+      ${contentSvg}
+    </svg>`;
+
+    const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
 
     const canvas = document.createElement("canvas");
-    canvas.width = width; canvas.height = height;
+    canvas.width = canvasW;
+    canvas.height = canvasH;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    ctx.scale(scale, scale);
     const img = new Image();
-    const svgData = new XMLSerializer().serializeToString(exportSvg);
-    const svgBlob = new Blob([svgData], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(svgBlob);
-
+    img.crossOrigin = "anonymous";
     img.onload = () => {
-      ctx.fillStyle = theme === "dark" ? "#020617" : "#ffffff";
-      ctx.fillRect(0, 0, width / scale, height / scale);
-      ctx.drawImage(img, 0, 0);
-      const pngUrl = canvas.toDataURL("image/png");
-      const link = document.createElement("a");
-      link.href = pngUrl;
-      link.download = `${projectName}_2x.png`;
-      link.click();
+      ctx.drawImage(img, 0, 0, canvasW, canvasH);
+      try {
+        const pngUrl = canvas.toDataURL("image/png");
+        const link = document.createElement("a");
+        link.href = pngUrl;
+        link.download = `${projectName}_2x.png`;
+        link.click();
+      } catch {
+        // Fallback: download SVG directly if canvas is tainted
+        const svgLink = document.createElement("a");
+        svgLink.href = url;
+        svgLink.download = `${projectName}.svg`;
+        svgLink.click();
+      }
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      // Fallback: download SVG if image rendering fails
+      const svgLink = document.createElement("a");
+      svgLink.href = url;
+      svgLink.download = `${projectName}.svg`;
+      svgLink.click();
       URL.revokeObjectURL(url);
     };
     img.src = url;
