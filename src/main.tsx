@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { ThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import { Analytics } from "@vercel/analytics/react"
+import { SpeedInsights } from "@vercel/speed-insights/react"
 import App from './App.tsx'
 import theme from './theme'
 import './index.css'
@@ -13,6 +14,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <CssBaseline />
       <App />
       <Analytics />
+      <SpeedInsights />
     </ThemeProvider>
   </React.StrictMode>,
 )
