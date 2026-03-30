@@ -2,7 +2,10 @@ import React, { useRef, useState, useCallback, useEffect } from "react";
 import { Box } from "@mui/material";
 import type { ShapeType, SvgElement } from "../types/svg";
 import { HandDrawnElement_v2 } from "./HandDrawnElement_v2";
-import { isElementInBox, getElementBounds } from "../utils/geometry";
+import { getElementBounds } from "../utils/geometry";
+import { useCanvasKeyboard } from "../hooks/canvas/useCanvasKeyboard";
+import { useCanvasEraser } from "../hooks/canvas/useCanvasEraser";
+import { useCanvasDrag } from "../hooks/canvas/useCanvasDrag";
 
 interface CanvasProps {
   elements: SvgElement[];
@@ -38,7 +41,6 @@ interface CanvasProps {
   eraseFromPencil: (id: string, centers: { x: number; y: number }[], radius: number) => void;
 }
 
-type DragMode = "move" | "create" | "resize" | "select" | "pencil" | "group-resize" | "group-rotate" | "eraser";
 
 const Canvas: React.FC<CanvasProps> = ({
   elements,
@@ -70,32 +72,58 @@ const Canvas: React.FC<CanvasProps> = ({
   eraserMode,
   eraseFromPencil,
 }) => {
-  const [dragInfo, setDragInfo] = useState<{
-    mode: DragMode; id?: string; startX: number; startY: number; handle?: string;
-    // extended: width/height/fontSize/rotation support group transforms
-    elementOffsets?: { id: string; x: number; y: number; x2?: number; y2?: number; points?: { x: number; y: number }[]; width?: number; height?: number; fontSize?: number; rotation?: number; }[];
-    originalElement?: Partial<SvgElement>;
-    // group-resize: original group bounding box + which corner
-    groupBounds?: { gx: number; gy: number; gw: number; gh: number; handle: string };
-    // group-rotate: group center + angle at drag start
-    groupCenter?: { cx: number; cy: number; startAngle: number };
-  } | null>(null);
-
-  const [selectionBox, setSelectionBox] = useState<{ x: number; y: number; width: number; height: number; } | null>(null);
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [editingTextPos, setEditingTextPos] = useState<{ x: number; y: number } | null>(null);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [isPanning, setIsPanning] = useState(false);
-  const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const [snappingLines, setSnappingLines] = useState<{ x?: number; y?: number } | null>(null);
-  const lastEraserPosRef = useRef<{ x: number; y: number } | null>(null);
   const [eraserPos, setEraserPos] = useState<{ x: number; y: number } | null>(null);
 
-  const drawingIdRef = useRef<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   // Fix #1: track whether the text element being edited was just created (vs double-clicked existing)
   const isNewTextRef = useRef(false);
+
+  const { handleEraserDrag, resetEraser } = useCanvasEraser({
+    elements,
+    eraserSize,
+    eraserMode,
+    eraseFromPencil,
+    onRemoveElements,
+  });
+
+  const {
+    dragInfo,
+    setDragInfo,
+    selectionBox,
+    isPanning,
+    hoveredId,
+    snappingLines,
+    getMousePos,
+    handleMouseDown,
+    handleMouseMove,
+    handleMouseUp,
+  } = useCanvasDrag({
+    elements,
+    selectedIds,
+    onSelect,
+    onAddPoint,
+    onFinalizeDrawing,
+    onUpdateElement,
+    onUpdateElements,
+    onAddElement,
+    activeTool,
+    onSetActiveTool,
+    zoom,
+    offset,
+    setOffset,
+    gridEnabled,
+    svgRef,
+    setEditingTextId,
+    setEditingTextPos,
+    isNewTextRef,
+    handleEraserDrag,
+    resetEraser,
+    setEraserPos,
+  });
 
   const fitToScreen = useCallback(() => {
     if (!svgRef.current?.parentElement) return;
@@ -139,48 +167,23 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   }, [activeMode]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Skip ALL canvas keyboard shortcuts when the user is typing in any input field,
-      // textarea, select box, or any contentEditable (layer rename, project name, etc.)
-      const focused = document.activeElement;
-      const focusedTag = focused?.tagName.toLowerCase();
-      if (focusedTag === "input" || focusedTag === "textarea" || focusedTag === "select") return;
-      if ((focused as HTMLElement)?.isContentEditable) return;
-      if (editingTextId) return;
 
-      const isCtrl = (e.metaKey || e.ctrlKey) && !e.altKey;
-      if (e.key.toLowerCase() === "a" && isCtrl) { e.preventDefault(); onSelect(elements.map(el => el.id)); return; }
-      if (e.key.toLowerCase() === "d" && isCtrl) { e.preventDefault(); onDuplicate(selectedIds); return; }
-      if (e.key.toLowerCase() === "f" && isCtrl) { e.preventDefault(); onBringToFront(selectedIds); return; }
-      if (e.key.toLowerCase() === "b" && isCtrl) { e.preventDefault(); onSendToBack(selectedIds); return; }
-      if (e.key.toLowerCase() === "z" && isCtrl) { e.preventDefault(); if (e.shiftKey) onRedo(); else onUndo(); return; }
-      if (e.key.toLowerCase() === "y" && isCtrl) { e.preventDefault(); onRedo(); return; }
-      if (e.key.toLowerCase() === "g" && isCtrl) {
-        e.preventDefault();
-        if (e.shiftKey) onUngroup(selectedIds);
-        else onGroup(selectedIds);
-        return;
-      }
 
-      if (!isCtrl) {
-        switch (e.key.toLowerCase()) {
-          case "v": onSetActiveTool("selection"); break;
-          case "r": onSetActiveTool("rect"); break;
-          case "o": onSetActiveTool("circle"); break;
-          case "l": onSetActiveTool("line"); break;
-          case "a": onSetActiveTool("arrow"); break;
-          case "t": onSetActiveTool("text"); break;
-          case "p": onSetActiveTool("pencil"); break;
-          case "e": onSetActiveTool("eraser"); break;
-          case "backspace":
-          case "delete": if (selectedIds.length > 0) onRemoveElements(selectedIds); break;
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [editingTextId, selectedIds, elements, onSetActiveTool, onRemoveElements, onSelect, onDuplicate, onBringToFront, onSendToBack, onUndo, onRedo]);
+  useCanvasKeyboard({
+    editingTextId,
+    selectedIds,
+    elements,
+    onSelect,
+    onRemoveElements,
+    onDuplicate,
+    onBringToFront,
+    onSendToBack,
+    onUndo,
+    onRedo,
+    onGroup,
+    onUngroup,
+    onSetActiveTool,
+  });
 
   useEffect(() => {
     // Use requestAnimationFrame so focus happens AFTER all pending browser events
@@ -194,375 +197,7 @@ const Canvas: React.FC<CanvasProps> = ({
     }
   }, [editingTextId]);
 
-  const getMousePos = useCallback((e: React.MouseEvent | MouseEvent) => {
-    if (!svgRef.current) return { x: 0, y: 0 };
-    const rect = svgRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left, y = e.clientY - rect.top;
-    return { x: x / (zoom / 100) - offset.x, y: y / (zoom / 100) - offset.y };
-  }, [zoom, offset]);
 
-  const snapToGrid = useCallback((val: number) => gridEnabled ? Math.round(val / 30) * 30 : val, [gridEnabled]);
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    const pos = getMousePos(e);
-    if (activeTool === "pencil") {
-      const id = onAddElement("pencil", { x: pos.x, y: pos.y, points: [pos] });
-      drawingIdRef.current = id; setDragInfo({ mode: "pencil", startX: pos.x, startY: pos.y });
-      return;
-    }
-    if (activeTool === "eraser") {
-      setDragInfo({ mode: "eraser", startX: pos.x, startY: pos.y });
-      return;
-    }
-    if (["rect", "circle", "line", "arrow"].includes(activeTool)) {
-      const snPos = { x: snapToGrid(pos.x), y: snapToGrid(pos.y) };
-      const id = onAddElement(activeTool as ShapeType, { x: snPos.x, y: snPos.y, width: 0, height: 0, x2: snPos.x, y2: snPos.y });
-      setDragInfo({ mode: "create", id, startX: snPos.x, startY: snPos.y }); onSelect([id]);
-      return;
-    }
-    if (activeTool === "import") {
-      document.getElementById("import-input")?.click();
-      return;
-    }
-    if (activeTool === "text") {
-      // e.preventDefault() stops the browser from focusing the canvas div on mousedown,
-      // which would steal focus from the textarea when it mounts.
-      e.preventDefault();
-
-      // Check if clicked on an existing text element
-      const clickedText = [...elements].reverse().find(el => {
-        if (el.type !== "text") return false;
-        const b = getElementBounds(el);
-        return pos.x >= b.x && pos.x <= b.x + b.width && pos.y >= b.y && pos.y <= b.y + b.height;
-      });
-
-      if (clickedText) {
-        onSelect([clickedText.id]);
-        setEditingTextId(clickedText.id);
-        setEditingTextPos({ x: clickedText.x, y: clickedText.y });
-        // Fix #1: editing existing text — do NOT delete on blur if empty
-        isNewTextRef.current = false;
-      } else {
-        const id = onAddElement("text", { x: pos.x, y: pos.y, content: "" });
-        onSelect([id]);
-        setEditingTextId(id);
-        setEditingTextPos({ x: pos.x, y: pos.y });
-        // Fix #1: newly created text — delete on blur if still empty
-        isNewTextRef.current = true;
-      }
-      return;
-    }
-    if (activeTool === "selection" && (e.button === 1 || e.altKey)) {
-      setIsPanning(true); setDragInfo({ mode: "move", startX: e.clientX, startY: e.clientY });
-      return;
-    }
-    if (activeTool === "rect" || activeTool === "circle" || activeTool === "line" || activeTool === "arrow" || activeTool === "section") {
-      const id = onAddElement(activeTool as ShapeType, { x: pos.x, y: pos.y, width: 0, height: 0 });
-      setDragInfo({ mode: "create", id, startX: pos.x, startY: pos.y });
-      return;
-    }
-    if (activeTool === "selection" && e.target === svgRef.current) {
-      onSelect([]); setSelectionBox({ x: pos.x, y: pos.y, width: 0, height: 0 });
-      setDragInfo({ mode: "select", startX: pos.x, startY: pos.y });
-    }
-  };
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    const pos = getMousePos(e);
-    if (activeTool === "eraser") {
-       setEraserPos(pos);
-    }
-    if (isPanning && dragInfo) {
-      const dx = (e.clientX - dragInfo.startX) / (zoom / 100), dy = (e.clientY - dragInfo.startY) / (zoom / 100);
-      setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy })); setDragInfo({ ...dragInfo, startX: e.clientX, startY: e.clientY });
-      return;
-    }
-    if (!dragInfo) return;
-    const maybeSnap = (v: number) => (gridEnabled && e.shiftKey) ? snapToGrid(v) : v;
-    const snPos = { x: maybeSnap(pos.x), y: maybeSnap(pos.y) };
-
-    // Update snapping lines feedback
-    if (gridEnabled && e.shiftKey) {
-      setSnappingLines({ 
-        x: Math.abs(pos.x - snPos.x) < 5 ? snPos.x : undefined,
-        y: Math.abs(pos.y - snPos.y) < 5 ? snPos.y : undefined
-      });
-    } else {
-      setSnappingLines(null);
-    }
-
-    if (dragInfo.mode === "pencil" && drawingIdRef.current) {
-      onAddPoint(drawingIdRef.current, pos.x, pos.y);
-    } else if (dragInfo.mode === "create" && dragInfo.id) {
-      const target = elements.find(el => el.id === dragInfo.id); if (!target) return;
-      if (target.type === "line" || target.type === "arrow") onUpdateElement(dragInfo.id, { x2: snPos.x, y2: snPos.y });
-      else {
-        let newWidth = Math.abs(snPos.x - dragInfo.startX);
-        let newHeight = Math.abs(snPos.y - dragInfo.startY);
-        
-        // SHIFT TO CONSTRAIN (1:1)
-        if (e.shiftKey) {
-          const size = Math.max(newWidth, newHeight);
-          newWidth = size;
-          newHeight = size;
-        }
-
-        let newX, newY;
-        // ALT TO CENTER
-        if (e.altKey) {
-          newX = dragInfo.startX - newWidth;
-          newY = dragInfo.startY - newHeight;
-          newWidth *= 2;
-          newHeight *= 2;
-        } else {
-          newX = Math.min(snPos.x, dragInfo.startX);
-          newY = Math.min(snPos.y, dragInfo.startY);
-          if (e.shiftKey) {
-             // adjust X/Y if constrained
-             newX = snPos.x < dragInfo.startX ? dragInfo.startX - newWidth : dragInfo.startX;
-             newY = snPos.y < dragInfo.startY ? dragInfo.startY - newHeight : dragInfo.startY;
-          }
-        }
-        onUpdateElement(dragInfo.id, { x: newX, y: newY, width: newWidth, height: newHeight });
-      }
-    } else if (dragInfo && dragInfo.mode === "eraser") {
-      // ERASER COLLISION LOGIC
-      const eraserRect = { 
-        x: pos.x - eraserSize, 
-        y: pos.y - eraserSize, 
-        width: eraserSize * 2, 
-        height: eraserSize * 2 
-      };
-
-      // INTERPOLATE SWIPE POINTS FOR SMOOTHNESS
-      const swipePoints: { x: number; y: number }[] = [pos];
-      if (lastEraserPosRef.current) {
-        const last = lastEraserPosRef.current;
-        const dist = Math.sqrt((pos.x - last.x) ** 2 + (pos.y - last.y) ** 2);
-        const steps = Math.ceil(dist / 4); // Step every 4px
-        for (let i = 1; i < steps; i++) {
-          swipePoints.push({
-            x: last.x + (pos.x - last.x) * (i / steps),
-            y: last.y + (pos.y - last.y) * (i / steps)
-          });
-        }
-      }
-      lastEraserPosRef.current = pos;
-
-      if (eraserMode === "freeform") {
-        const toDeleteObjects: string[] = [];
-        elements.forEach(el => {
-          if (!el.visible || el.locked) return;
-          
-          if (el.type === "pencil") {
-            // High-precision segment-based erase
-            eraseFromPencil(el.id, swipePoints, eraserSize);
-          } else {
-            // FALLBACK TO BOX CHECK FOR OTHER SHAPES IN FREEFORM MODE
-            if (isElementInBox(el, eraserRect)) toDeleteObjects.push(el.id);
-          }
-        });
-        if (toDeleteObjects.length > 0) onRemoveElements(toDeleteObjects);
-      } else {
-        const toDelete = elements
-          .filter(el => el.visible && !el.locked && isElementInBox(el, eraserRect))
-          .map(el => el.id);
-        if (toDelete.length > 0) onRemoveElements(toDelete);
-      }
-    } else if (dragInfo.mode === "move") {
-      const dx = pos.x - dragInfo.startX, dy = pos.y - dragInfo.startY;
-      onUpdateElements(selectedIds, el => {
-        const off = dragInfo.elementOffsets?.find(o => o.id === el.id); if (!off) return {};
-        const updates: Partial<SvgElement> = { x: maybeSnap(off.x + dx), y: maybeSnap(off.y + dy) };
-        if (el.type === "line" || el.type === "arrow") { updates.x2 = maybeSnap((off.x2 || 0) + dx); updates.y2 = maybeSnap((off.y2 || 0) + dy); }
-        else if (el.type === "pencil" && off.points) updates.points = off.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-        return updates;
-      });
-
-      // AUTO-PARENTING ON MOVE (AFTER DRAG END or DURING DRAG)
-      // For performance, we'll do this check after the map
-      selectedIds.forEach(id => {
-         const el = elements.find(e => e.id === id);
-         if (el && el.type !== "section") {
-            const sections = elements.filter(e => e.type === "section" && !selectedIds.includes(e.id));
-            const parentSection = sections.find(s => {
-               const b = getElementBounds(el);
-               const sb = getElementBounds(s);
-               const cx = b.x + b.width / 2;
-               const cy = b.y + b.height / 2;
-               return cx >= sb.x && cx <= (sb.x + sb.width) && cy >= sb.y && cy <= (sb.y + sb.height);
-            });
-            if (parentSection && el.parentId !== parentSection.id) onUpdateElement(el.id, { parentId: parentSection.id });
-            else if (!parentSection && el.parentId) onUpdateElement(el.id, { parentId: undefined });
-         }
-      });
-    } else if (dragInfo.mode === "select") {
-      const box = { x: dragInfo.startX, y: dragInfo.startY, width: snPos.x - dragInfo.startX, height: snPos.y - dragInfo.startY };
-      setSelectionBox(box);
-      // Fix #5: exclude hidden elements from marquee selection
-      const ids = elements
-        .filter(el => el.visible && isElementInBox(el, box))
-        .map(el => el.id);
-      if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
-    } else {
-      // HOVER DETECTION
-      if (activeTool === "selection" && !dragInfo) {
-        const hovered = [...elements].reverse().find(el => {
-          if (!el.visible || el.locked) return false;
-          const b = getElementBounds(el);
-          return pos.x >= b.x && pos.x <= b.x + b.width && pos.y >= b.y && pos.y <= b.y + b.height;
-        });
-        setHoveredId(hovered?.id || null);
-      }
-    }
-
-    if (dragInfo.mode === "group-resize" && dragInfo.groupBounds) {
-      const { gx, gy, gw, gh, handle } = dragInfo.groupBounds;
-      // Determine the fixed anchor corner and compute new group dimensions
-      let anchorX: number, anchorY: number, newGw: number, newGh: number;
-      switch (handle) {
-        case "br": anchorX = gx;      anchorY = gy;      newGw = Math.max(20, snPos.x - gx);         newGh = Math.max(20, snPos.y - gy);         break;
-        case "bl": anchorX = gx + gw; anchorY = gy;      newGw = Math.max(20, (gx+gw) - snPos.x);   newGh = Math.max(20, snPos.y - gy);         break;
-        case "tr": anchorX = gx;      anchorY = gy + gh; newGw = Math.max(20, snPos.x - gx);         newGh = Math.max(20, (gy+gh) - snPos.y);   break;
-        case "tl": anchorX = gx + gw; anchorY = gy + gh; newGw = Math.max(20, (gx+gw) - snPos.x);   newGh = Math.max(20, (gy+gh) - snPos.y);   break;
-        default:   anchorX = gx;      anchorY = gy;      newGw = gw; newGh = gh;
-      }
-      const scaleX = newGw / gw, scaleY = newGh / gh;
-      onUpdateElements(selectedIds, el => {
-        const off = dragInfo.elementOffsets?.find(o => o.id === el.id);
-        if (!off) return {};
-        const updates: Partial<SvgElement> = {
-          x: anchorX + (off.x - anchorX) * scaleX,
-          y: anchorY + (off.y - anchorY) * scaleY,
-        };
-        if (off.width  !== undefined) updates.width  = Math.max(5, off.width  * scaleX);
-        if (off.height !== undefined) updates.height = Math.max(5, off.height * scaleY);
-        // Scale font size proportionally (use min of X/Y scale)
-        if (off.fontSize !== undefined) updates.fontSize = Math.max(8, off.fontSize * Math.min(scaleX, scaleY));
-        if (el.type === "line" || el.type === "arrow") {
-          if (off.x2 !== undefined) updates.x2 = anchorX + (off.x2 - anchorX) * scaleX;
-          if (off.y2 !== undefined) updates.y2 = anchorY + (off.y2 - anchorY) * scaleY;
-        }
-        if (el.type === "pencil" && off.points) {
-          updates.points = off.points.map(p => ({
-            x: anchorX + (p.x - anchorX) * scaleX,
-            y: anchorY + (p.y - anchorY) * scaleY,
-          }));
-        }
-        return updates;
-      });
-    } else if (dragInfo.mode === "group-rotate" && dragInfo.groupCenter) {
-      const { cx, cy, startAngle } = dragInfo.groupCenter;
-      const currentAngle = Math.atan2(snPos.y - cy, snPos.x - cx);
-      const deltaDeg = (currentAngle - startAngle) * (180 / Math.PI);
-      const rad = deltaDeg * (Math.PI / 180);
-      const cosA = Math.cos(rad), sinA = Math.sin(rad);
-      // Helper: rotate any point around the group center
-      const rotPt = (px: number, py: number) => ({
-        x: cx + (px - cx) * cosA - (py - cy) * sinA,
-        y: cy + (px - cx) * sinA + (py - cy) * cosA,
-      });
-      onUpdateElements(selectedIds, el => {
-        const off = dragInfo.elementOffsets?.find(o => o.id === el.id);
-        if (!off) return {};
-        const updates: Partial<SvgElement> = {};
-
-        if (el.type === "line" || el.type === "arrow") {
-          // Both endpoints define the shape — rotate them, no rotation property needed
-          const s = rotPt(off.x, off.y);
-          const e2 = rotPt(off.x2 ?? off.x, off.y2 ?? off.y);
-          updates.x = s.x; updates.y = s.y;
-          updates.x2 = e2.x; updates.y2 = e2.y;
-        } else if (el.type === "pencil" && off.points) {
-          // All points define the shape — rotate each one
-          const newPts = off.points.map(p => rotPt(p.x, p.y));
-          updates.points = newPts;
-          updates.x = newPts[0]?.x ?? off.x;
-          updates.y = newPts[0]?.y ?? off.y;
-        } else if (el.type === "circle") {
-          // For circles x,y IS the visual center — orbit it directly
-          const nc = rotPt(off.x, off.y);
-          updates.x = nc.x; updates.y = nc.y;
-          updates.rotation = ((off.rotation ?? 0) + deltaDeg + 360) % 360;
-        } else {
-          // rect / text: x,y is the TOP-LEFT corner.
-          // Rotate the VISUAL CENTER (x+w/2, y+h/2), then re-derive top-left.
-          const hw = (off.width ?? 0) / 2;
-          const hh = (off.height ?? 0) / 2;
-          const nc = rotPt(off.x + hw, off.y + hh);
-          updates.x = nc.x - hw;
-          updates.y = nc.y - hh;
-          updates.rotation = ((off.rotation ?? 0) + deltaDeg + 360) % 360;
-        }
-        return updates;
-      });
-
-    } else if (dragInfo.mode === "resize" && dragInfo.id && dragInfo.originalElement) {
-      const el = dragInfo.originalElement as SvgElement, dx = snPos.x - dragInfo.startX, dy = snPos.y - dragInfo.startY;
-      const updates: Partial<SvgElement> = {};
-      if (dragInfo.handle === "rotate") {
-        let cX = el.x + (el.width||0)/2, cY = el.y + (el.height||0)/2;
-        updates.rotation = (Math.atan2(snPos.y - cY, snPos.x - cX) * 180 / Math.PI) + 90;
-      } else {
-        const h = dragInfo.handle;
-        if (!h) return;
-        if (["tl", "tr", "bl", "br"].includes(h)) {
-          let newW = el.width || 0, newH = el.height || 0, newX = el.x, newY = el.y;
-          if (h.includes("r")) newW = Math.max(5, (el.width || 0) + dx);
-          else { newW = Math.max(5, (el.width || 0) - dx); newX = el.x + dx; }
-          if (h.includes("b")) newH = Math.max(5, (el.height || 0) + dy);
-          else { newH = Math.max(5, (el.height || 0) - dy); newY = el.y + dy; }
-
-          // Fix: maintain aspect ratio for image/svg/text
-          if (el.type === "image" || el.type === "svg" || el.type === "text") {
-            const aspect = (el.width || 1) / (el.height || 1);
-            if (newW / newH > aspect) newW = newH * aspect;
-            else newH = newW / aspect;
-            if (h.includes("l")) newX = (el.x + (el.width || 0)) - newW;
-            if (h.includes("t")) newY = (el.y + (el.height || 0)) - newH;
-
-            if (el.type === "text") {
-              const scale = newW / (el.width || 20);
-              updates.fontSize = Math.max(8, Math.round((el.fontSize || 24) * scale));
-            }
-          }
-          updates.width = newW; updates.height = newH; updates.x = newX; updates.y = newY;
-        } else if (h === "p1") { updates.x = (el.x || 0) + dx; updates.y = (el.y || 0) + dy; }
-        else if (h === "p2") { updates.x2 = (el.x2 || 0) + dx; updates.y2 = (el.y2 || 0) + dy; }
-      }
-      onUpdateElement(dragInfo.id, updates);
-    }
-  };
-
-  const handleMouseUp = () => {
-    // Fix #4: finalize pencil stroke into history on mouse-up
-    if (dragInfo?.mode === "pencil" && drawingIdRef.current) {
-      onFinalizeDrawing(drawingIdRef.current);
-    }
-
-    // AUTO-PARENT ON CREATE
-    if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil") && dragInfo.id) {
-       const el = elements.find(e => e.id === dragInfo.id);
-       if (el) {
-          const sections = elements.filter(e => e.type === "section" && e.id !== el.id);
-          const parentSection = sections.find(s => {
-             const b = getElementBounds(el);
-             const sb = getElementBounds(s);
-             const cx = b.x + b.width / 2;
-             const cy = b.y + b.height / 2;
-             return cx >= sb.x && cx <= (sb.x + sb.width) && cy >= sb.y && cy <= (sb.y + sb.height);
-          });
-          if (parentSection) onUpdateElement(el.id, { parentId: parentSection.id });
-       }
-    }
-
-    if (dragInfo && (dragInfo.mode === "create" || dragInfo.mode === "pencil")) {
-      onSetActiveTool("selection");
-    }
-    setSnappingLines(null);
-    setIsPanning(false); drawingIdRef.current = null; setDragInfo(null); setSelectionBox(null); setEraserPos(null);
-    lastEraserPosRef.current = null;
-  };
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey) { onUpdateZoom(e.deltaY > 0 ? -5 : 5); return; }
@@ -681,7 +316,7 @@ const Canvas: React.FC<CanvasProps> = ({
           )}
 
           <g clipPath={activeMode === "designer" ? "url(#artboard-clip)" : undefined}>
-            {[...elements].sort((a, _b) => (a.type === "section" ? -1 : 1)).map(el => {
+            {[...elements].sort((a, b) => { if (a.type === "section" && b.type !== "section") return -1; if (b.type === "section" && a.type !== "section") return 1; return 0; }).map(el => {
               const isSelected = selectedIds.includes(el.id);
               const isEditing = el.id === editingTextId;
               const isHovered = hoveredId === el.id;

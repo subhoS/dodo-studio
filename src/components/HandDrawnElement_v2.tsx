@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
 import rough from "roughjs";
+import DOMPurify from "dompurify";
 import type { SvgElement } from "../types/svg";
 
 import { getElementBounds } from "../utils/geometry";
@@ -12,7 +13,27 @@ interface HandDrawnElementProps {
   theme?: "light" | "dark";
 }
 
-export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
+const roughGenerator = rough.generator();
+
+const parseSvgDimensions = (svg: string) => {
+  const widthMatch = svg.match(/(?:width)="([^"]+)"/);
+  const heightMatch = svg.match(/(?:height)="([^"]+)"/);
+  const viewBoxMatch = svg.match(/viewBox="([^"]+)"/);
+  let w = 100, h = 100;
+  if (viewBoxMatch) {
+    const parts = viewBoxMatch[1].split(/[ ,]+/);
+    if (parts.length >= 4) {
+      w = parseFloat(parts[2]);
+      h = parseFloat(parts[3]);
+    }
+  } else {
+    if (widthMatch) w = parseFloat(widthMatch[1]) || 100;
+    if (heightMatch) h = parseFloat(heightMatch[1]) || 100;
+  }
+  return { w: Math.max(1, w), h: Math.max(1, h) };
+};
+
+export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo(({
   element,
   isSelected,
   isEditing,
@@ -21,7 +42,9 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
 }) => {
   if (!element.visible || (element.type === "text" && isEditing)) return null;
 
-  const generator = useMemo(() => rough.generator(), []);
+  const generator = roughGenerator;
+  const safeSvg = useMemo(() => DOMPurify.sanitize(element.svgContent || ""), [element.svgContent]);
+  const { w: svgW, h: svgH } = useMemo(() => parseSvgDimensions(safeSvg), [safeSvg]);
 
   const bounds = getElementBounds(element);
   const centerX = bounds.x + bounds.width / 2;
@@ -187,8 +210,8 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             )}
             {element.type === "svg" && element.svgContent && (
               <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/ (element.svgContent.includes('cx="50"') || element.svgContent.includes('width="100"') ? 100 : 24)}, ${(element.height||100)/ (element.svgContent.includes('cy="50"') || element.svgContent.includes('height="100"') ? 100 : 24)})`}
-                dangerouslySetInnerHTML={{ __html: element.svgContent }} 
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`}
+                dangerouslySetInnerHTML={{ __html: safeSvg }} 
               />
             )}
             {element.type === "path" && element.content && (
@@ -210,8 +233,8 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
             )}
             {element.type === "svg" && element.svgContent && (
               <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/ (element.svgContent.includes('cx="50"') || element.svgContent.includes('width="100"') ? 100 : 24)}, ${(element.height||100)/ (element.svgContent.includes('cy="50"') || element.svgContent.includes('height="100"') ? 100 : 24)})`}
-                dangerouslySetInnerHTML={{ __html: element.svgContent }} 
+                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`}
+                dangerouslySetInnerHTML={{ __html: safeSvg }} 
               />
             )}
             {paths.map((p: any, i: number) => <path key={`${element.id}-${i}`} d={p.d} fill={p.fill || "none"} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeDasharray={p.strokeDasharray} />)}
@@ -220,5 +243,5 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = ({
       </g>
     </g>
   );
-};
+});
 export default HandDrawnElement_v2;

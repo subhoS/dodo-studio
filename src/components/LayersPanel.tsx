@@ -35,7 +35,7 @@ const TYPE_ICONS: Record<string, React.ReactNode> = {
   path:   <Pencil   size={13} />,
 };
 
-const LayersPanel: React.FC<LayersPanelProps> = ({
+const LayersPanel: React.FC<LayersPanelProps> = React.memo(({
   elements,
   selectedIds,
   onSelect,
@@ -68,7 +68,7 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
   const sub    = dark ? "rgba(255,255,255,0.55)"   : "rgba(0,0,0,0.45)";
 
   // Reversed list: top of panel = front of canvas
-  const reversed = [...elements].reverse();
+  const reversed = React.useMemo(() => [...elements].reverse(), [elements]);
   const filtered = search.trim()
     ? reversed.filter(el => el.name.toLowerCase().includes(search.trim().toLowerCase()))
     : reversed;
@@ -377,6 +377,6 @@ const LayersPanel: React.FC<LayersPanelProps> = ({
       </Box>
     </Box>
   );
-};
+});
 
 export default LayersPanel;

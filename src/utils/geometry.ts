@@ -50,21 +50,56 @@ export const getElementBounds = (element: SvgElement): Bounds => {
     minY = Math.min(element.y, element.y2 || element.y);
     width = Math.max(2, Math.abs((element.x2 || element.x) - element.x));
     height = Math.max(2, Math.abs((element.y2 || element.y) - element.y));
-  } else if (element.type === "pencil" && element.points) {
-    const xs = element.points.map((p) => p.x),
-      ys = element.points.map((p) => p.y);
-    minX = Math.min(...xs);
-    minY = Math.min(...ys);
-    width = Math.max(2, Math.max(...xs) - minX);
-    height = Math.max(2, Math.max(...ys) - minY);
+  } else if (element.type === "pencil" && element.points && element.points.length > 0) {
+    minX = element.points[0].x;
+    let maxX = element.points[0].x;
+    minY = element.points[0].y;
+    let maxY = element.points[0].y;
+    for (let i = 1; i < element.points.length; i++) {
+       const p = element.points[i];
+       if (p.x < minX) minX = p.x;
+       if (p.x > maxX) maxX = p.x;
+       if (p.y < minY) minY = p.y;
+       if (p.y > maxY) maxY = p.y;
+    }
+    width = Math.max(2, maxX - minX);
+    height = Math.max(2, maxY - minY);
   } else if (element.type === "text") {
     const fs = element.fontSize || 24;
     const { width: tw, height: th } = getTextBounds(element.content || "", fs);
-    
     minX = element.x;
     minY = element.y;
     width = tw;
     height = th;
+  }
+
+  if (element.rotation) {
+    const cx = element.x + (element.width || 0) / 2;
+    const cy = element.y + (element.height || 0) / 2;
+    const rad = (element.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+
+    const pts = [
+      { x: minX, y: minY },
+      { x: minX + width, y: minY },
+      { x: minX, y: minY + height },
+      { x: minX + width, y: minY + height }
+    ];
+
+    let rMinX = Infinity, rMaxX = -Infinity, rMinY = Infinity, rMaxY = -Infinity;
+    for (const p of pts) {
+      const rx = cos * (p.x - cx) - sin * (p.y - cy) + cx;
+      const ry = sin * (p.x - cx) + cos * (p.y - cy) + cy;
+      if (rx < rMinX) rMinX = rx;
+      if (rx > rMaxX) rMaxX = rx;
+      if (ry < rMinY) rMinY = ry;
+      if (ry > rMaxY) rMaxY = ry;
+    }
+    minX = rMinX;
+    minY = rMinY;
+    width = Math.max(2, rMaxX - rMinX);
+    height = Math.max(2, rMaxY - rMinY);
   }
 
   return { x: minX, y: minY, width, height };

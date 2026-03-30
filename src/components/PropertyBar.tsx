@@ -28,7 +28,7 @@ const SafeIcon = ({ name, size = 18 }: { name: string; size?: number }) => {
   return <IconComponent size={size} />;
 };
 
-const PropertyBar: React.FC<PropertyBarProps> = ({
+const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
   element,
   onUpdate,
   onRemove,
@@ -89,6 +89,40 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
         <Typography className="heading-font" sx={{ fontSize: "0.7rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: 1.5 }}>
           {element.type}
         </Typography>
+      </Stack>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* Numeric Inputs for X, Y, W, H, Rotation */}
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0, px: 0.5 }}>
+        {[
+          { label: "X", value: element.x, field: "x" },
+          { label: "Y", value: element.y, field: "y" },
+          ...(element.type !== "pencil" && element.type !== "line" && element.type !== "arrow" ? [
+            { label: "W", value: element.width || 0, field: "width" },
+            { label: "H", value: element.height || 0, field: "height" },
+            { label: "R°", value: element.rotation || 0, field: "rotation" },
+          ] : [])
+        ].map(prop => (
+          <Stack key={prop.label} direction="row" alignItems="center" spacing={0.5}>
+            <Typography sx={{ fontSize: "0.55rem", fontWeight: 800, opacity: 0.6 }}>{prop.label}</Typography>
+            <input 
+              type="number" 
+              value={Math.round(prop.value as number)} 
+              onChange={(e) => handleUpdate({ [prop.field]: Number(e.target.value) })}
+              style={{ 
+                width: 45, height: 22, 
+                backgroundColor: theme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)", 
+                border: `1px solid ${borderColor}`, 
+                color: textColor, 
+                borderRadius: 4, 
+                fontSize: "0.7rem", 
+                padding: "0 4px",
+                fontFamily: "Inter, sans-serif"
+              }} 
+            />
+          </Stack>
+        ))}
       </Stack>
 
       {element.type !== "image" && element.type !== "svg" && (
@@ -270,5 +304,5 @@ const PropertyBar: React.FC<PropertyBarProps> = ({
       </Stack>
     </Paper>
   );
-};
+});
 export default PropertyBar;

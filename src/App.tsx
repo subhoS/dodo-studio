@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Box, IconButton, Tooltip, Stack, Typography, Button, Divider, Slider 
+  Box, IconButton, Tooltip, Stack, Typography, Button, Divider, Slider, Snackbar, Menu, MenuItem, Dialog, DialogTitle, DialogContent, DialogActions
 } from "@mui/material";
 import { 
   Square, Circle, MousePointer2, Pencil, Type, Layers as LayersIcon, 
   Minus as LineIcon, ArrowRight as ArrowIcon, Edit2 as EditIcon, 
   Upload as ImportIcon, Trash2 as TrashIcon, Maximize, Grid as GridIcon,
   Sun as LightModeIcon, Moon as DarkModeIcon, 
-  ChevronLeft, Share2, Download, User, Library, Eraser as EraserIcon
+  ChevronLeft, Share2, Download, User, Library, Eraser as EraserIcon, Plus
 } from "lucide-react";
 import { useSvgStore } from "./hooks/useSvgStore";
+import { getElementBounds } from "./utils/geometry";
+import type { SvgElement } from "./types/svg";
 import DodoLogo from "./components/DodoLogo";
 import Canvas from "./components/Canvas";
 import PropertyBar from "./components/PropertyBar";
@@ -29,7 +31,8 @@ const App: React.FC = () => {
     addPoint, finalizeDrawing,
     undo, redo, clearCanvas,
     selectedIds, setSelectedIds,
-    selectedElement, eraseFromPencil
+    selectedElement, eraseFromPencil,
+    canUndo, canRedo
   } = useSvgStore();
 
   const [activeTool, setActiveTool] = useState("selection");
@@ -43,6 +46,16 @@ const App: React.FC = () => {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [eraserSize, setEraserSize] = useState(10);
   const [eraserMode, setEraserMode] = useState<"object" | "freeform">("object");
+  const [toast, setToast] = useState<{ message: string; open: boolean }>({ message: "", open: false });
+  const [exportAnchor, setExportAnchor] = useState<null | HTMLElement>(null);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
+
+  const handleUndo = () => {
+    if (canUndo) { undo(); setToast({ message: "Undone (Ctrl+Shift+Z to Redo)", open: true }); }
+  };
+  const handleRedo = () => {
+    if (canRedo) { redo(); setToast({ message: "Redone", open: true }); }
+  };
 
   const activeMode = activeProject?.mode || "designer";
   const artboardSize = activeProject?.artboardSize || { width: 1000, height: 1000 };
@@ -59,6 +72,10 @@ const App: React.FC = () => {
       setView("dashboard");
     }
   }, [activeProject?.id, artboardSize.width, artboardSize.height]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   const handleZoom = (val: number, isAbsolute = false) => {
     setZoom(prev => {
@@ -77,10 +94,20 @@ const App: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isEditingName]);
 
-  const handleExportPNG = async () => {
-    if (elements.length === 0) return;
+  const handleExport = async (format: "png" | "svg" | "json", scale: number = 2) => {
+    setExportAnchor(null);
+    if (!activeProject) return;
 
-    const scale = 2; // 2x for Retina
+    if (format === "json") {
+       const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activeProject, null, 2));
+       const a = document.createElement("a");
+       a.href = dataStr;
+       a.download = `${activeProject.name || "project"}.json`;
+       a.click();
+       return;
+    }
+
+    if (elements.length === 0) return;
     let vbX: number, vbY: number, vbW: number, vbH: number;
 
     if (activeMode === "designer") {
@@ -93,22 +120,11 @@ const App: React.FC = () => {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       elements.forEach(el => {
         if (!el.visible) return;
-        const b = (() => {
-          if (el.type === "line" || el.type === "arrow") {
-            const x1 = Math.min(el.x, el.x2 || el.x), y1 = Math.min(el.y, el.y2 || el.y);
-            const x2 = Math.max(el.x, el.x2 || el.x), y2 = Math.max(el.y, el.y2 || el.y);
-            return { x: x1, y: y1, w: Math.max(2, x2 - x1), h: Math.max(2, y2 - y1) };
-          } else if (el.type === "pencil" && el.points?.length) {
-            const xs = el.points.map(p => p.x), ys = el.points.map(p => p.y);
-            const px = Math.min(...xs), py = Math.min(...ys);
-            return { x: px, y: py, w: Math.max(2, Math.max(...xs) - px), h: Math.max(2, Math.max(...ys) - py) };
-          }
-          return { x: el.x, y: el.y, w: el.width || 100, h: el.height || 100 };
-        })();
+        const b = getElementBounds(el);
         minX = Math.min(minX, b.x);
         minY = Math.min(minY, b.y);
-        maxX = Math.max(maxX, b.x + b.w);
-        maxY = Math.max(maxY, b.y + b.h);
+        maxX = Math.max(maxX, b.x + b.width);
+        maxY = Math.max(maxY, b.y + b.height);
       });
       const pad = 40;
       vbX = minX - pad; vbY = minY - pad;
@@ -172,6 +188,15 @@ const App: React.FC = () => {
     const svgBlob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(svgBlob);
 
+    if (format === "svg") {
+      const a = document.createElement("a");
+      a.download = `${activeProject.name || "export"}.svg`;
+      a.href = url;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
     const canvas = document.createElement("canvas");
     canvas.width = canvasW;
     canvas.height = canvasH;
@@ -186,24 +211,15 @@ const App: React.FC = () => {
         const pngUrl = canvas.toDataURL("image/png");
         const link = document.createElement("a");
         link.href = pngUrl;
-        link.download = `${projectName}_2x.png`;
+        link.download = `${projectName}_${scale}x.png`;
         link.click();
       } catch {
-        // Fallback: download SVG directly if canvas is tainted
         const svgLink = document.createElement("a");
         svgLink.href = url;
         svgLink.download = `${projectName}.svg`;
         svgLink.click();
       }
-      URL.revokeObjectURL(url);
-    };
-    img.onerror = () => {
-      // Fallback: download SVG if image rendering fails
-      const svgLink = document.createElement("a");
-      svgLink.href = url;
-      svgLink.download = `${projectName}.svg`;
-      svgLink.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => URL.revokeObjectURL(url), 100);
     };
     img.src = url;
   };
@@ -214,34 +230,44 @@ const App: React.FC = () => {
     e.target.value = "";
   };
 
-  const handleImportFile = (file: File) => {
+  const handleImportFile = (file: File, x?: number, y?: number) => {
     const reader = new FileReader();
     reader.onload = (event) => {
       const content = event.target?.result as string;
+      const initialProps: Partial<SvgElement> = { name: file.name };
+      if (x !== undefined) initialProps.x = x;
+      if (y !== undefined) initialProps.y = y;
+
       if (file.type === "image/svg+xml") {
-        addElement("svg", { content, name: file.name });
+        addElement("svg", { ...initialProps, svgContent: content });
       } else {
-        addElement("image", { content, name: file.name });
+        addElement("image", { ...initialProps, url: content });
       }
     };
-    if (file.type === "image/svg+xml") reader.readAsText(file);
+    if (file.type === "image/svg+xml" || file.type.startsWith("text/")) reader.readAsText(file);
     else reader.readAsDataURL(file);
   };
 
-  const toolbarTools = [
-    { id: "selection", label: "Select (V)", icon: <MousePointer2 /> },
-    { id: "rect", label: "Rectangle (R)", icon: <Square /> },
-    { id: "circle", label: "Circle (O)", icon: <Circle /> },
-    { id: "line", label: "Line (L)", icon: <LineIcon /> },
-    { id: "arrow", label: "Arrow (A)", icon: <ArrowIcon /> },
-    { id: "pencil", label: "Pencil (P)", icon: <Pencil /> },
-    { id: "text", label: "Text (T)", icon: <Type /> },
-    { id: "library", label: "Library", icon: <Library /> },
-    { id: "eraser", label: "Eraser (E)", icon: <EraserIcon /> },
-    { id: "section", label: "Section (S)", icon: <Maximize /> },
-    { id: "import", label: "Import (I)", icon: <ImportIcon /> },
-    { id: "grid", label: "Grid (G)", icon: <GridIcon /> },
-    { id: "layers", label: "Layers", icon: <LayersIcon /> },
+  const toolbarGroups = [
+    [
+      { id: "selection", label: "Select (V)", icon: <MousePointer2 /> },
+      { id: "eraser", label: "Eraser (E)", icon: <EraserIcon /> },
+      { id: "section", label: "Section (S)", icon: <Maximize /> },
+    ],
+    [
+      { id: "rect", label: "Rectangle (R)", icon: <Square /> },
+      { id: "circle", label: "Circle (O)", icon: <Circle /> },
+      { id: "line", label: "Line (L)", icon: <LineIcon /> },
+      { id: "arrow", label: "Arrow (A)", icon: <ArrowIcon /> },
+      { id: "pencil", label: "Pencil (P)", icon: <Pencil /> },
+      { id: "text", label: "Text (T)", icon: <Type /> },
+      { id: "import", label: "Import (I)", icon: <ImportIcon /> },
+    ],
+    [
+      { id: "library", label: "Library", icon: <Library /> },
+      { id: "layers", label: "Layers", icon: <LayersIcon /> },
+      { id: "grid", label: "Grid (G)", icon: <GridIcon /> },
+    ]
   ];
 
   if (view === "dashboard") {
@@ -257,11 +283,11 @@ const App: React.FC = () => {
   }
 
   return (
-    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: "transparent", color: "#f1f5f9", overflow: "hidden", position: "relative" }}>
+    <Box sx={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", bgcolor: "transparent", color: "var(--text-h)", overflow: "hidden", position: "relative" }}>
       {/* Editor Header */}
       <Box className="glass-panel" sx={{ height: 64, px: 3, display: "flex", alignItems: "center", zIndex: 1100, borderRadius: 0, borderTop: "none", borderLeft: "none", borderRight: "none" }}>
         <Stack direction="row" alignItems="center" spacing={2} sx={{ mr: 4 }}>
-          <IconButton onClick={() => loadProject("")} sx={{ color: "rgba(255,255,255,0.4)", "&:hover": { color: "#22d3ee" } }}>
+          <IconButton onClick={() => loadProject("")} sx={{ color: "var(--text-dim)", "&:hover": { color: "var(--accent)" } }}>
             <ChevronLeft size={20} />
           </IconButton>
           <DodoLogo size={24} />
@@ -278,7 +304,7 @@ const App: React.FC = () => {
               onBlur={() => setIsEditingName(false)} 
               onKeyDown={(e) => e.key === "Enter" && setIsEditingName(false)} 
               className="heading-font"
-              style={{ background: "transparent", color: "#fff", border: "none", borderBottom: "2px solid #22d3ee", outline: "none", fontWeight: 700, fontSize: "0.95rem", width: "180px" }} 
+              style={{ background: "transparent", color: "var(--text-h)", border: "none", borderBottom: "2px solid var(--accent)", outline: "none", fontWeight: 700, fontSize: "0.95rem", width: "180px" }} 
             />
           ) : (
             <Stack direction="row" alignItems="center" spacing={1} onClick={() => setIsEditingName(true)} sx={{ cursor: "pointer", "&:hover": { opacity: 0.8 } }}>
@@ -290,7 +316,7 @@ const App: React.FC = () => {
         </Stack>
 
         <Stack direction="row" spacing={1.5} alignItems="center">
-          <IconButton onClick={() => setTheme(theme === "dark" ? "light" : "dark")} sx={{ color: "rgba(255,255,255,0.4)" }}>
+          <IconButton onClick={() => setTheme(theme === "dark" ? "light" : "dark")} sx={{ color: "var(--text-dim)" }}>
             {theme === "dark" ? <LightModeIcon size={18} /> : <DarkModeIcon size={18} />}
           </IconButton>
           
@@ -298,22 +324,35 @@ const App: React.FC = () => {
             variant="outlined" 
             size="small" 
             startIcon={<Share2 size={16} />}
-            sx={{ borderRadius: "8px", borderColor: "rgba(255,255,255,0.1)", color: "rgba(255,255,255,0.8)", textTransform: "none", fontWeight: 700, height: 36 }}
+            sx={{ borderRadius: "8px", borderColor: "var(--border-strong)", color: "var(--text)", textTransform: "none", fontWeight: 700, height: 36 }}
           >
             Share
           </Button>
 
           <Button 
             variant="contained" 
-            onClick={handleExportPNG} 
+            onClick={(e) => setExportAnchor(e.currentTarget)} 
             startIcon={<Download size={16} />}
-            sx={{ bgcolor: "#22d3ee", color: "#020617", textTransform: "none", borderRadius: "8px", fontWeight: 800, px: 2, height: 36, "&:hover": { bgcolor: "#67e8f9" } }}
+            sx={{ bgcolor: "var(--accent)", color: "#020617", textTransform: "none", borderRadius: "8px", fontWeight: 800, px: 2, height: 36, "&:hover": { bgcolor: "var(--accent-hover)" } }}
           >
             Export
           </Button>
 
-          <Box sx={{ width: 32, height: 32, borderRadius: "50%", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", ml: 1 }}>
-            <User size={16} color="rgba(255,255,255,0.4)" />
+          <Menu 
+            anchorEl={exportAnchor} 
+            open={Boolean(exportAnchor)} 
+            onClose={() => setExportAnchor(null)}
+            PaperProps={{ sx: { bgcolor: theme === "dark" ? "#1a1d21" : "#ffffff", color: "var(--text-h)", mt: 1, border: "1px solid var(--border-strong)", borderRadius: "12px", boxShadow: "0 10px 40px rgba(0,0,0,0.3)" } }}
+          >
+            <MenuItem onClick={() => handleExport("png", 1)} sx={{ fontSize: "0.85rem", fontWeight: 600 }}>Export PNG (1x)</MenuItem>
+            <MenuItem onClick={() => handleExport("png", 2)} sx={{ fontSize: "0.85rem", fontWeight: 600 }}>Export PNG (2x)</MenuItem>
+            <Divider sx={{ my: 0.5, borderColor: "var(--border-strong)" }} />
+            <MenuItem onClick={() => handleExport("svg", 1)} sx={{ fontSize: "0.85rem", fontWeight: 600 }}>Export Vector (SVG)</MenuItem>
+            <MenuItem onClick={() => handleExport("json", 1)} sx={{ fontSize: "0.85rem", fontWeight: 600 }}>Export DODO JSON</MenuItem>
+          </Menu>
+
+          <Box sx={{ width: 32, height: 32, borderRadius: "50%", background: "var(--accent-soft)", display: "flex", alignItems: "center", justifyContent: "center", ml: 1 }}>
+            <User size={16} color="var(--accent)" />
           </Box>
         </Stack>
       </Box>
@@ -333,37 +372,42 @@ const App: React.FC = () => {
             "&::-webkit-scrollbar": { display: "none" } // Hide for Chrome
           }}
         >
-          {toolbarTools.map((tool) => {
-            const isActive = activeTool === tool.id || (tool.id === "layers" && showLayers) || (tool.id === "grid" && gridEnabled);
-            return (
-              <Tooltip key={tool.id} title={tool.label} placement="right" arrow>
-                <IconButton
-                  onClick={() => {
-                    if (tool.id === "layers") { setShowLayers(!showLayers); setShowLibrary(false); }
-                    else if (tool.id === "library") { setShowLibrary(!showLibrary); setShowLayers(false); }
-                    else if (tool.id === "grid") setGridEnabled(!gridEnabled);
-                    else if (tool.id === "import") document.getElementById("import-input")?.click();
-                    else setActiveTool(tool.id);
-                  }}
-                  sx={{
-                    width: 48, height: 48,
-                    borderRadius: "12px",
-                    color: isActive ? "#22d3ee" : "rgba(255,255,255,0.4)",
-                    bgcolor: isActive ? "rgba(34, 211, 238, 0.1)" : "transparent",
-                    transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
-                    "&:hover": { bgcolor: isActive ? "rgba(34, 211, 238, 0.15)" : "rgba(255,255,255,0.05)", color: isActive ? "#22d3ee" : "#fff", transform: "scale(1.05)" }
-                  }}>
-                  {React.cloneElement(tool.icon as any, { size: 20, strokeWidth: isActive ? 2.5 : 2 })}
-                </IconButton>
-              </Tooltip>
-            );
-          })}
+          {toolbarGroups.map((group, gIdx) => (
+            <React.Fragment key={gIdx}>
+              {group.map((tool) => {
+                const isActive = activeTool === tool.id || (tool.id === "layers" && showLayers) || (tool.id === "grid" && gridEnabled);
+                return (
+                  <Tooltip key={tool.id} title={tool.label} placement="right" arrow>
+                    <IconButton
+                      onClick={() => {
+                        if (tool.id === "layers") { setShowLayers(!showLayers); setShowLibrary(false); }
+                        else if (tool.id === "library") { setShowLibrary(!showLibrary); setShowLayers(false); }
+                        else if (tool.id === "grid") setGridEnabled(!gridEnabled);
+                        else if (tool.id === "import") document.getElementById("import-input")?.click();
+                        else setActiveTool(tool.id);
+                      }}
+                      sx={{
+                        width: 48, height: 48,
+                        borderRadius: "12px",
+                        color: isActive ? "var(--accent)" : "var(--text-dim)",
+                        bgcolor: isActive ? "var(--accent-soft)" : "transparent",
+                        transition: "all 0.2s cubic-bezier(0.4, 0, 0.2, 1)",
+                        "&:hover": { bgcolor: isActive ? "var(--accent-hover)" : "var(--border-strong)", color: isActive ? "var(--accent)" : "var(--text-h)", transform: "scale(1.05)" }
+                      }}>
+                      {React.cloneElement(tool.icon as any, { size: 20, strokeWidth: isActive ? 2.5 : 2 })}
+                    </IconButton>
+                  </Tooltip>
+                );
+              })}
+              {gIdx < toolbarGroups.length - 1 && <Divider sx={{ width: "50%", my: 0.5, borderColor: "var(--border-strong)" }} />}
+            </React.Fragment>
+          ))}
           <input id="import-input" type="file" accept="image/*,.svg" style={{ display: "none" }} onChange={handleImport} />
           
           <Divider sx={{ width: "60%", my: 1, opacity: 0.1 }} />
 
           <Tooltip title="Clear Canvas">
-            <IconButton onClick={() => { if (window.confirm("Clear all elements?")) clearCanvas(); }} sx={{ color: "rgba(255,100,100,0.4)", "&:hover": { color: "#ff5f5f", bgcolor: "rgba(255,0,0,0.05)" } }}>
+            <IconButton onClick={() => setClearDialogOpen(true)} sx={{ color: "rgba(255,100,100,0.4)", "&:hover": { color: "#ff5f5f", bgcolor: "rgba(255,0,0,0.05)" } }}>
               <TrashIcon size={18} />
             </IconButton>
           </Tooltip>
@@ -407,8 +451,8 @@ const App: React.FC = () => {
             onImportFile={handleImportFile}
             onGroup={groupElements}
             onUngroup={ungroupElements}
-            onUndo={undo} 
-            onRedo={redo} 
+            onUndo={handleUndo} 
+            onRedo={handleRedo} 
             activeTool={activeTool} 
             onSetActiveTool={setActiveTool} 
             zoom={zoom} 
@@ -439,7 +483,7 @@ const App: React.FC = () => {
                 onBringToFront={(id) => bringToFront([id])}
                 onSendToBack={(id) => sendToBack([id])}
                 onDuplicate={(id) => duplicateElements([id])}
-                onAlign={(id, align) => alignElements([id], align)}
+                onAlign={(_, align) => alignElements(selectedIds, align)}
                 theme={theme}
               />
             </Box>
@@ -467,6 +511,54 @@ const App: React.FC = () => {
         </Box>
       </Box>
       <ShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} theme={theme} />
+
+      {/* Zoom UI */}
+      <Box 
+        className="glass-panel" 
+        sx={{ 
+          position: "absolute", bottom: 24, right: 90, zIndex: 1100, 
+          display: "flex", alignItems: "center", borderRadius: "12px", 
+          height: 48, px: 0.5, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" 
+        }}
+      >
+        <IconButton size="small" onClick={() => handleZoom(-10)} sx={{ color: "var(--text-dim)" }}>
+          <LineIcon size={16} />
+        </IconButton>
+        <Typography 
+          onClick={() => {
+             setZoom(100);
+             window.dispatchEvent(new CustomEvent("fit-to-screen"));
+          }}
+          sx={{ fontSize: "0.80rem", width: 44, textAlign: "center", fontWeight: 800, cursor: "pointer", "&:hover": { color: "var(--accent)" }, userSelect: "none" }}
+        >
+          {Math.round(zoom)}%
+        </Typography>
+        <IconButton size="small" onClick={() => handleZoom(10)} sx={{ color: "var(--text-dim)" }}>
+          <Plus size={16} />
+        </IconButton>
+      </Box>
+
+      {/* Clear Dialog */}
+      <Dialog 
+        open={clearDialogOpen} 
+        onClose={() => setClearDialogOpen(false)}
+        PaperProps={{ sx: { bgcolor: "var(--glass-bg)", backdropFilter: "blur(12px)", border: "1px solid var(--border-strong)", borderRadius: "16px", color: "var(--text-h)", backgroundImage: "none" } }}
+      >
+        <DialogTitle sx={{ fontWeight: 800 }}>Clear Canvas</DialogTitle>
+        <DialogContent sx={{ color: "var(--text-dim)", pb: 1, fontWeight: 500 }}>
+          Are you sure you want to delete all elements? This action can be undone later via history.
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setClearDialogOpen(false)} sx={{ color: "var(--text-h)", textTransform: "none", fontWeight: 600 }}>Cancel</Button>
+          <Button 
+            onClick={() => { clearCanvas(); setClearDialogOpen(false); }} 
+            variant="contained" color="error" 
+            sx={{ textTransform: "none", fontWeight: 700, borderRadius: "8px", boxShadow: "none" }}
+          >
+            Clear Artboard
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       <Tooltip title="Keyboard Shortcuts (?)">
         <IconButton 
@@ -538,6 +630,26 @@ const App: React.FC = () => {
           </Stack>
         </Box>
       )}
+
+      <Snackbar
+        open={toast.open}
+        autoHideDuration={2000}
+        onClose={() => setToast({ ...toast, open: false })}
+        message={toast.message}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+        ContentProps={{
+          sx: {
+            bgcolor: "var(--glass-bg)",
+            color: "var(--text-h)",
+            backdropFilter: "blur(12px)",
+            borderRadius: "12px",
+            border: "1px solid var(--border)",
+            fontWeight: 700,
+            fontSize: "0.85rem",
+            boxShadow: "0 10px 40px rgba(0,0,0,0.2)"
+          }
+        }}
+      />
     </Box>
   );
 };

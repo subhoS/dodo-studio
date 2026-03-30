@@ -49,7 +49,10 @@ export const useSvgStore = () => {
   useEffect(() => { projectsRef.current = projects; }, [projects]);
 
   useEffect(() => {
-    localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+    const handler = setTimeout(() => {
+      localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+    }, 500);
+    return () => clearTimeout(handler);
   }, [projects]);
 
   useEffect(() => {
@@ -57,9 +60,13 @@ export const useSvgStore = () => {
     else localStorage.removeItem(ACTIVE_PROJECT_KEY);
   }, [activeProjectId]);
 
+  const pendingHistoryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const pushToHistory = useCallback(
     (newElements: SvgElement[]) => {
-      setHistoryState((prev) => {
+      if (pendingHistoryRef.current) clearTimeout(pendingHistoryRef.current);
+      pendingHistoryRef.current = setTimeout(() => {
+        setHistoryState((prev) => {
         if (!activeProjectId) return prev;
         const currentHistory = prev.histories[activeProjectId] ?? [[]];
         const currentIndex = prev.indexes[activeProjectId] ?? 0;
@@ -71,6 +78,7 @@ export const useSvgStore = () => {
           indexes: { ...prev.indexes, [activeProjectId]: newIndex },
         };
       });
+      }, 500);
     },
     [activeProjectId],
   );
@@ -86,10 +94,6 @@ export const useSvgStore = () => {
         setProjects(pjs => pjs.map(p => p.id === activeProjectId ? { ...p, elements: targetElements } : p));
         setSelectedIds([]);
         return { ...prev, indexes: { ...prev.indexes, [activeProjectId]: prevIndex } };
-      } else if (currentIndex === 0) {
-        setProjects(pjs => pjs.map(p => p.id === activeProjectId ? { ...p, elements: [] } : p));
-        setSelectedIds([]);
-        return { ...prev, indexes: { ...prev.indexes, [activeProjectId]: -1 } };
       }
       return prev;
     });
@@ -126,7 +130,7 @@ export const useSvgStore = () => {
   const addElement = useCallback(
     (type: ShapeType, initialProps?: Partial<SvgElement>) => {
       const isDesigner = activeMode === "designer";
-      const id = Math.random().toString(36).substring(2, 11);
+      const id = crypto.randomUUID();
       const newElement: SvgElement = {
         id,
         type,
@@ -332,7 +336,7 @@ export const useSvgStore = () => {
         // Replace original with segments
         const segmentsAsElements = remainingSegments.map((pts, i) => ({
           ...el,
-          id: i === 0 ? el.id : Math.random().toString(36).substring(2, 11),
+          id: i === 0 ? el.id : crypto.randomUUID(),
           points: pts,
           x: pts[0].x,
           y: pts[0].y
@@ -368,7 +372,7 @@ export const useSvgStore = () => {
       const selected = currentPrj.elements.filter(el => ids.includes(el.id));
       const minX = Math.min(...selected.map(el => el.x));
       const minY = Math.min(...selected.map(el => el.y));
-      const groupId = `group-${Math.random().toString(36).substring(2, 9)}`;
+      const groupId = `group-${crypto.randomUUID()}`;
       const groupNode: SvgElement = {
         id: groupId,
         type: "section",
@@ -412,7 +416,7 @@ export const useSvgStore = () => {
         const toDup = prev.filter((el) => ids.includes(el.id));
         const newEls = toDup.map((el) => ({
           ...el,
-          id: Math.random().toString(36).substring(2, 11),
+          id: crypto.randomUUID(),
           x: el.x + 20,
           y: el.y + 20,
           name: `${el.name} (Copy)`,
@@ -462,10 +466,26 @@ export const useSvgStore = () => {
       updateAndSave((prev) => {
         const selected = prev.filter((el) => ids.includes(el.id));
         if (selected.length < 1) return prev;
-        const minX = Math.min(...selected.map((el) => el.x));
-        const maxX = Math.max(...selected.map((el) => el.x + (el.width || 0)));
-        const minY = Math.min(...selected.map((el) => el.y));
-        const maxY = Math.max(...selected.map((el) => el.y + (el.height || 0)));
+        
+        let minX = Math.min(...selected.map((el) => el.x));
+        let maxX = Math.max(...selected.map((el) => el.x + (el.width || 0)));
+        let minY = Math.min(...selected.map((el) => el.y));
+        let maxY = Math.max(...selected.map((el) => el.y + (el.height || 0)));
+
+        // If only one element is selected, align to the Artboard
+        if (selected.length === 1 && activeProject) {
+           const { width: aw, height: ah } = activeProject.artboardSize;
+           if (activeMode === "designer") {
+              minX = -aw / 2;
+              maxX = aw / 2;
+              minY = -ah / 2;
+              maxY = ah / 2;
+           } else {
+              // Moodboard alignment could be to viewport, but for now we'll stick to group bounds if it's not Designer mode
+              // or just keep it relative to self. Let's just implement for Designer mode for now as Artboard is most critical there.
+           }
+        }
+
         return prev.map((el) => {
           if (!ids.includes(el.id)) return el;
           switch (alignment) {
@@ -498,7 +518,7 @@ export const useSvgStore = () => {
   const currentHistory = activeProjectId ? (historyState.histories[activeProjectId] ?? [[]]) : [[]];
 
   const createProject = useCallback((name: string, mode: "moodboard" | "designer", size: CanvasSize) => {
-    const id = `prj-${Math.random().toString(36).substring(2, 11)}`;
+    const id = `prj-${crypto.randomUUID()}`;
     const newProject: Project = { id, name, mode, artboardSize: size, elements: [], lastModified: Date.now() };
     setProjects(prev => [newProject, ...prev]);
     setActiveProjectId(id);
