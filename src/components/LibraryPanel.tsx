@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import type { ShapeType } from "../types/svg";
 import {
   Box, Typography, Stack, Grid, TextField, InputAdornment,
   IconButton, Tooltip, Tabs, Tab, Card, CardActionArea
@@ -8,25 +9,24 @@ import { Search, X } from "lucide-react";
 interface LibraryItem {
   id: string;
   name: string;
-  type: "path" | "svg";
+  type: ShapeType;
   content?: string;
   svgContent?: string;
+  sides?: number;
+  innerRadiusRatio?: number;
   preview: string; // SVG preview markup
 }
 
 // ── SHAPES ──────────────────────────────────────────────
 const SHAPES: LibraryItem[] = [
+  { id: "p-star", name: "Parametric Star", type: "star", sides: 5, innerRadiusRatio: 0.4, preview: `<polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.5"/>` },
+  { id: "p-poly", name: "Parametric Polygon", type: "polygon", sides: 6, preview: `<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "heart", name: "Heart", type: "path", content: "M 50 85 C 50 85 10 60 10 35 C 10 15 30 15 50 30 C 70 15 90 15 90 35 C 90 60 50 85 50 85 Z", preview: `<path d="M12 21C12 21 4 15 4 9.5C4 6 6.5 4 9.5 5.5C11 6.3 12 8 12 8C12 8 13 6.3 14.5 5.5C17.5 4 20 6 20 9.5C20 15 12 21 12 21Z" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "star", name: "Star", type: "path", content: "M 50 5 L 63 38 L 98 38 L 70 59 L 81 91 L 50 72 L 19 91 L 30 59 L 2 38 L 37 38 Z", preview: `<polygon points="12,2 15,9 22,9 16.5,14 18.5,21 12,17 5.5,21 7.5,14 2,9 9,9" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "triangle", name: "Triangle", type: "path", content: "M 50 10 L 90 90 L 10 90 Z", preview: `<polygon points="12,3 22,21 2,21" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "hexagon", name: "Hexagon", type: "path", content: "M 50 10 L 90 30 L 90 70 L 50 90 L 10 70 L 10 30 Z", preview: `<polygon points="12,2 21,7 21,17 12,22 3,17 3,7" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "octagon", name: "Octagon", type: "path", content: "M 30 10 L 70 10 L 90 30 L 90 70 L 70 90 L 30 90 L 10 70 L 10 30 Z", preview: `<polygon points="8,2 16,2 22,8 22,16 16,22 8,22 2,16 2,8" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "pentagon", name: "Pentagon", type: "path", content: "M 50 10 L 90 40 L 75 90 L 25 90 L 10 40 Z", preview: `<polygon points="12,2 22,9 19,21 5,21 2,9" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "diamond", name: "Diamond", type: "path", content: "M 50 5 L 95 50 L 50 95 L 5 50 Z", preview: `<polygon points="12,2 22,12 12,22 2,12" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
+  { id: "triangle", name: "Triangle", type: "polygon", sides: 3, preview: `<polygon points="12,3 22,21 2,21" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
+  { id: "diamond", name: "Diamond", type: "polygon", sides: 4, preview: `<polygon points="12,2 22,12 12,22 2,12" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "cross", name: "Cross", type: "path", content: "M 35 10 L 65 10 L 65 35 L 90 35 L 90 65 L 65 65 L 65 90 L 35 90 L 35 65 L 10 65 L 10 35 L 35 35 Z", preview: `<path d="M8,3 L16,3 L16,8 L21,8 L21,16 L16,16 L16,21 L8,21 L8,16 L3,16 L3,8 L8,8 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "arrow-right", name: "Arrow Right", type: "path", content: "M 10 35 L 60 35 L 60 15 L 90 50 L 60 85 L 60 65 L 10 65 Z", preview: `<path d="M3,8 L14,8 L14,3 L21,12 L14,21 L14,16 L3,16 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "speech-bubble", name: "Speech Bubble", type: "path", content: "M 15 15 L 85 15 Q 90 15 90 20 L 90 60 Q 90 65 85 65 L 40 65 L 25 80 L 30 65 L 15 65 Q 10 65 10 60 L 10 20 Q 10 15 15 15 Z", preview: `<path d="M4,4 L20,4 Q21,4 21,5 L21,15 Q21,16 20,16 L10,16 L6,20 L7,16 L4,16 Q3,16 3,15 L3,5 Q3,4 4,4 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
-  { id: "badge", name: "Badge", type: "path", content: "M 50 5 L 60 20 L 78 12 L 75 32 L 95 38 L 82 52 L 95 65 L 75 70 L 78 90 L 60 80 L 50 95 L 40 80 L 22 90 L 25 70 L 5 65 L 18 52 L 5 38 L 25 32 L 22 12 L 40 20 Z", preview: `<path d="M12,2 L14,6 L18,5 L17,9 L21,10 L18,13 L21,16 L17,17 L18,20 L14,19 L12,22 L10,19 L6,20 L7,17 L3,16 L6,13 L3,10 L7,9 L6,5 L10,6 Z" fill="currentColor" opacity="0.2" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "lightning", name: "Lightning", type: "path", content: "M 55 5 L 25 50 L 45 50 L 35 95 L 75 45 L 55 45 Z", preview: `<path d="M14,2 L6,12 L11,12 L8,22 L18,10 L13,10 Z" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.5"/>` },
   { id: "crescent", name: "Crescent", type: "path", content: "M 60 10 C 30 10 10 35 10 55 C 10 78 30 95 55 95 C 35 85 30 60 45 40 C 55 25 55 10 60 10 Z", preview: `<path d="M15,3 C8,3 3,8 3,13 C3,19 8,22 13,22 C8,19 7,14 10,9 C13,6 14,3 15,3 Z" fill="currentColor" opacity="0.3" stroke="currentColor" stroke-width="1.5"/>` },
 ];
@@ -83,7 +83,7 @@ const ALL_TABS = [
 ];
 
 interface LibraryPanelProps {
-  onAddItem: (type: "path" | "svg", name: string, content?: string, svgContent?: string) => void;
+  onAddItem: (type: ShapeType, name: string, content?: string, svgContent?: string, sides?: number, innerRadiusRatio?: number) => void;
   onClose: () => void;
   theme: "light" | "dark";
 }
@@ -147,7 +147,7 @@ const LibraryPanel: React.FC<LibraryPanelProps> = ({ onAddItem, onClose }) => {
                   "&:hover": { transform: "scale(1.05)", borderColor: currentTab.accent, bgcolor: `${currentTab.accent}10` }
                 }}>
                   <CardActionArea
-                    onClick={() => onAddItem(item.type, item.name, item.content, item.svgContent)}
+                    onClick={() => onAddItem(item.type, item.name, item.content, item.svgContent, item.sides, item.innerRadiusRatio)}
                     sx={{ p: 1.5, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 0.5 }}
                   >
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ color: currentTab.accent }}>

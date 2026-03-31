@@ -68,18 +68,50 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
 
     try {
       let shapes: any[] = [];
+      const x = element.x, y = element.y, w = element.width || 100, h = element.height || 100;
+      const cx = x + w / 2, cy = y + h / 2;
+
       switch (element.type) {
         case "rect":
           if (element.cornerRadius && element.cornerRadius > 0) {
-            const r = Math.min(element.cornerRadius, (element.width || 100) / 2, (element.height || 100) / 2);
-            const x = element.x, y = element.y, w = element.width || 100, h = element.height || 100;
+            const r = Math.min(element.cornerRadius, w / 2, h / 2);
             const path = `M ${x + r},${y} L ${x + w - r},${y} Q ${x + w},${y} ${x + w},${y + r} L ${x + w},${y + h - r} Q ${x + w},${y + h} ${x + w - r},${y + h} L ${x + r},${y + h} Q ${x},${y + h} ${x},${y + h - r} L ${x},${y + r} Q ${x},${y} ${x + r},${y} Z`;
             shapes.push(generator.path(path, options));
-          } else shapes.push(generator.rectangle(element.x, element.y, element.width || 100, element.height || 100, options));
+          } else shapes.push(generator.rectangle(x, y, w, h, options));
           break;
         case "circle":
-          shapes.push(generator.ellipse(element.x + (element.width || 100) / 2, element.y + (element.height || 100) / 2, element.width || 100, element.height || 100, options));
+          shapes.push(generator.ellipse(cx, cy, w, h, options));
           break;
+        case "star": {
+          const points = (element.sides || 5) * 2;
+          const innerRatio = element.innerRadiusRatio ?? 0.4;
+          const rx = w / 2, ry = h / 2;
+          let path = "";
+          for (let i = 0; i < points; i++) {
+            const angle = (i * Math.PI * 2) / points - Math.PI / 2;
+            const r = i % 2 === 0 ? 1 : innerRatio;
+            const px = cx + rx * r * Math.cos(angle);
+            const py = cy * ry * r * Math.sin(angle);
+            path += (i === 0 ? "M " : " L ") + `${px},${py}`;
+          }
+          path += " Z";
+          shapes.push(generator.path(path, options));
+          break;
+        }
+        case "polygon": {
+          const sides = element.sides || 6;
+          const rx = w / 2, ry = h / 2;
+          let path = "";
+          for (let i = 0; i < sides; i++) {
+            const angle = (i * Math.PI * 2) / sides - Math.PI / 2;
+            const px = cx + rx * Math.cos(angle);
+            const py = cy * ry * Math.sin(angle);
+            path += (i === 0 ? "M " : " L ") + `${px},${py}`;
+          }
+          path += " Z";
+          shapes.push(generator.path(path, options));
+          break;
+        }
         case "pencil":
           if (element.points && element.points.length > 1) shapes.push(generator.curve(element.points.map(p => [p.x, p.y]), { ...options, strokeWidth: (element.strokeWidth || 2) + 0.5 }));
           break;

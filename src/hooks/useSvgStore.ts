@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement, Project, CanvasSize } from "../types/svg";
 import { simplifyPath, isSegmentIntersectingCircle, getElementBounds } from "../utils/geometry";
 import { performBooleanOp } from "../utils/booleanOperations";
+import { explodeSvgString } from "../utils/svgExploder";
 
 
 const PROJECTS_STORAGE_KEY = "vibe_code_projects_v2";
@@ -556,6 +557,20 @@ export const useSvgStore = () => {
     [elements, updateAndSave, setSelectedIds],
   );
 
+  const explodeSvg = useCallback(
+    (id: string) => {
+      const element = elements.find((el) => el.id === id);
+      if (!element || element.type !== "svg" || !element.svgContent) return;
+
+      const newElements = explodeSvgString(element.svgContent, element);
+      if (newElements.length === 0) return;
+
+      updateAndSave((prev) => [...prev.filter((el) => el.id !== id), ...newElements]);
+      setSelectedIds(newElements.map((el) => el.id));
+    },
+    [elements, updateAndSave, setSelectedIds],
+  );
+
   const clearCanvas = useCallback(() => {
     updateAndSave([]);
     setSelectedIds([]);
@@ -608,6 +623,7 @@ export const useSvgStore = () => {
     finalizeDrawing,
     groupElements,
     ungroupElements,
+    explodeSvg,
     duplicateElements,
     bringToFront,
     sendToBack,

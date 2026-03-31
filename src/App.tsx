@@ -26,7 +26,7 @@ const App: React.FC = () => {
     createProject, loadProject, deleteProject, updateProjectName,
     addElement, updateElement, updateElements, removeElements, 
     duplicateElements, bringToFront, sendToBack, 
-    reorderElements, groupElements, ungroupElements, alignElements, 
+    reorderElements, groupElements, ungroupElements, explodeSvg, alignElements, 
     applyBooleanOperation,
     toggleVisibility, toggleLock,
     addPoint, finalizeDrawing,
@@ -420,11 +420,13 @@ const App: React.FC = () => {
               <LibraryPanel 
                 theme={theme} 
                 onClose={() => setShowLibrary(false)} 
-                onAddItem={(type, name, content, svgContent) => {
+                onAddItem={(type, name, content, svgContent, sides, innerRadiusRatio) => {
                   addElement(type, { 
                     name, 
                     content: content || "", 
                     svgContent: svgContent || "",
+                    sides: sides,
+                    innerRadiusRatio: innerRadiusRatio,
                     x: (window.innerWidth / 2) - 300, 
                     y: (window.innerHeight / 2) - 100,
                     width: 100,
@@ -489,6 +491,7 @@ const App: React.FC = () => {
                 onDuplicate={(id) => duplicateElements(selectedIds.includes(id) ? selectedIds : [id])}
                 onAlign={(_, align) => alignElements(selectedIds, align)}
                 onBooleanOp={applyBooleanOperation}
+                onExplode={explodeSvg}
                 theme={theme}
               />
               )}

@@ -41,6 +41,8 @@ A modern, focused environment featuring glassmorphic toolbars and professional-g
 ### 🛠 Professional Toolset
 - **Boolean Geometry Engine**: Recursive Union, Intersect, and Exclude operations for complex vector creation and high-end iconography.
 - **Advanced Text & Typography**: Full control over FontWeight, FontStyle, Text Decoration, Line Height, Letter Spacing, and Case transformations.
+- **Parametric Shape Library**: Real-time customization of **Stars** and **Polygons**. Adjust point counts and depth on-the-fly with dynamic path generation.
+- **SVG Exploding Engine**: Disassemble monolithic imported SVGs into individual, editable native paths for localized styling and modification.
 - **Asset Integration**: Seamlessly import **Images (PNG, JPG)** and **SVGs** with proportional scaling and professional depth.
 
 ### 📦 Layer & Project Management

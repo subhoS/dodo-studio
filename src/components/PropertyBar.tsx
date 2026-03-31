@@ -15,7 +15,9 @@ import {
   TypographySection, 
   AppearanceSection, 
   EffectsSection, 
-  ArrangementSection 
+  ArrangementSection,
+  ShapeSection,
+  SectionHeader
 } from "./InspectorSections.tsx";
 
 interface PropertyBarProps {
@@ -26,6 +28,7 @@ interface PropertyBarProps {
   onSendToBack: (id: string) => void;
   onDuplicate: (id: string) => void;
   onAlign: (id: string, alignment: "left" | "center" | "right" | "top" | "v-center" | "bottom") => void;
+  onExplode?: (id: string) => void;
   selectedIds?: string[];
   onMultiUpdate?: (ids: string[], updates: Partial<SvgElement>) => void;
   onBooleanOp?: (ids: string[], type: "union" | "intersect" | "exclude") => void;
@@ -45,6 +48,7 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
   onSendToBack,
   onDuplicate,
   onAlign,
+  onExplode,
   selectedIds = [],
   onMultiUpdate,
   onBooleanOp,
@@ -71,6 +75,8 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
   const typeIconName =
     element.type === "rect" ? "Square"
     : element.type === "circle" ? "Circle"
+    : element.type === "star" ? "Star"
+    : element.type === "polygon" ? "Pentagon"
     : element.type === "pencil" ? "Pencil"
     : element.type === "text" ? "Type"
     : element.type === "line" ? "Minus"
@@ -117,6 +123,13 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
         borderColor={borderColor} textColor={textColor} theme={theme} 
       />
 
+      {(element.type === "star" || element.type === "polygon") && (
+        <>
+          <Divider orientation="vertical" flexItem />
+          <ShapeSection element={element} handleUpdate={handleUpdate} />
+        </>
+      )}
+
       <Divider orientation="vertical" flexItem />
 
       {element.type === "text" && (
@@ -135,6 +148,26 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
             element={element} handleUpdate={handleUpdate} 
             colors={colors} colorInputRef={colorInputRef} 
           />
+          <Divider orientation="vertical" flexItem />
+        </>
+      )}
+
+      {element.type === "svg" && onExplode && (
+        <>
+          <Box sx={{ flexShrink: 0 }}>
+             <SectionHeader label="Parser" icon="Wand2" />
+             <Tooltip title="Disassemble SVG into editable paths">
+               <IconButton 
+                 onClick={() => onExplode(element.id)}
+                 sx={{ 
+                   bgcolor: "rgba(34,211,238,0.1)", color: "#22d3ee", px: 2, borderRadius: "10px",
+                   fontSize: "0.65rem", fontWeight: 800, gap: 1, "&:hover": { bgcolor: "rgba(34,211,238,0.2)" }
+                 }}
+               >
+                 <SafeIcon name="Zap" size={14} /> EXPLODE SVG
+               </IconButton>
+             </Tooltip>
+          </Box>
           <Divider orientation="vertical" flexItem />
         </>
       )}

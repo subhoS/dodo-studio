@@ -311,3 +311,43 @@ export const ArrangementSection: React.FC<{
   );
 };
 
+export const ShapeSection: React.FC<{
+  element: SvgElement;
+  handleUpdate: (updates: Partial<SvgElement>) => void;
+}> = ({ element, handleUpdate }) => {
+  if (element.type !== "star" && element.type !== "polygon") return null;
+
+  return (
+    <Box sx={{ flexShrink: 0 }}>
+      <SectionHeader label="Shape" icon="Pentagon" />
+      <Stack direction="row" spacing={2} alignItems="center">
+        <Box sx={{ minWidth: 80 }}>
+          <Typography sx={{ fontSize: "0.5rem", fontWeight: 900, opacity: 0.5, mb: 0.1 }}>
+            {element.type === "star" ? "POINTS" : "SIDES"} {element.sides || (element.type === "star" ? 5 : 6)}
+          </Typography>
+          <Slider
+            size="small"
+            value={element.sides || (element.type === "star" ? 5 : 6)} min={3} max={20} step={1}
+            onChange={(_, v) => handleUpdate({ sides: v as number })}
+            sx={{ color: "#22d3ee", py: 0.5 }}
+          />
+        </Box>
+
+        {element.type === "star" && (
+          <Box sx={{ minWidth: 80 }}>
+            <Typography sx={{ fontSize: "0.5rem", fontWeight: 900, opacity: 0.5, mb: 0.1 }}>
+              INNER RADIUS {Math.round((element.innerRadiusRatio ?? 0.4) * 100)}%
+            </Typography>
+            <Slider
+              size="small"
+              value={element.innerRadiusRatio ?? 0.4} min={0.1} max={0.9} step={0.05}
+              onChange={(_, v) => handleUpdate({ innerRadiusRatio: v as number })}
+              sx={{ color: "#22d3ee", py: 0.5 }}
+            />
+          </Box>
+        )}
+      </Stack>
+    </Box>
+  );
+};
+

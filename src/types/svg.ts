@@ -8,6 +8,8 @@ export type ShapeType =
   | "path"
   | "image"
   | "svg"
+  | "star"
+  | "polygon"
   | "section";
 
 export interface SvgElement {
@@ -45,6 +47,8 @@ export interface SvgElement {
   rotation?: number;
   cornerRadius?: number;
   bowing?: number;
+  sides?: number; // for polygons
+  innerRadiusRatio?: number; // for stars (0 to 1)
   locked?: boolean;
   parentId?: string;
   blendMode?: string;
