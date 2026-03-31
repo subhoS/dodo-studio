@@ -39,6 +39,16 @@ interface UseCanvasDragProps {
   setEraserPos: (pos: { x: number; y: number } | null) => void;
 }
 
+const findRootGroupId = (el: SvgElement, allElements: SvgElement[]): string => {
+  let current = el;
+  while (current.parentId) {
+    const parent = allElements.find(e => e.id === current.parentId);
+    if (!parent) break;
+    current = parent;
+  }
+  return current.id;
+};
+
 export function useCanvasDrag({
   elements,
   selectedIds,
@@ -293,8 +303,11 @@ export function useCanvasDrag({
     } else if (dragInfo.mode === "select") {
       const box = { x: dragInfo.startX, y: dragInfo.startY, width: snPos.x - dragInfo.startX, height: snPos.y - dragInfo.startY };
       setSelectionBox(box);
-      const ids = elements.filter(el => el.visible && isElementInBox(el, box)).map(el => el.id);
-      if (JSON.stringify(ids) !== JSON.stringify(selectedIds)) onSelect(ids);
+      const ids = elements
+        .filter(el => el.visible && !el.locked && isElementInBox(el, box))
+        .map(el => findRootGroupId(el, elements));
+      const uniqueIds = Array.from(new Set(ids));
+      if (JSON.stringify(uniqueIds) !== JSON.stringify(selectedIds)) onSelect(uniqueIds);
     } else {
       if (activeTool === "selection" && !dragInfo) {
         const hovered = [...elements].reverse().find(el => {
@@ -302,7 +315,7 @@ export function useCanvasDrag({
           const b = getElementBounds(el);
           return pos.x >= b.x && pos.x <= b.x + b.width && pos.y >= b.y && pos.y <= b.y + b.height;
         });
-        setHoveredId(hovered?.id || null);
+        setHoveredId(hovered ? findRootGroupId(hovered, elements) : null);
       }
     }
 

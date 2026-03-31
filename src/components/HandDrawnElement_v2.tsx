@@ -233,13 +233,24 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
         </g>
       </g>
       {/* HOVER GLOW / GHOST OUTLINE (Restored) */}
-      {isHovered && !isSelected && (
+      {isHovered && !isSelected && !element.locked && (
         <g style={{ opacity: 0.3, pointerEvents: "none" }}>
           <rect 
             x={bounds.x - 2} y={bounds.y - 2} 
             width={bounds.width + 4} height={bounds.height + 4} 
             rx={element.type === "rect" ? (element.cornerRadius || 0) + 2 : (element.type === "circle" ? bounds.width : 4)} 
             fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 2" 
+          />
+        </g>
+      )}
+
+      {/* LOCK INDICATOR */}
+      {element.locked && (
+        <g transform={`translate(${element.x - 10}, ${element.y - 10})`} style={{ pointerEvents: "none" }}>
+          <rect width="20" height="20" rx="10" fill="#ffd33d" />
+          <path 
+            d="M7 10V7a3 3 0 0 1 6 0v3M5 10h10a1 1 0 0 1 1 1v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-5a1 1 0 0 1 1-1z" 
+            fill="none" stroke="#000" strokeWidth="1.5" transform="scale(0.8) translate(2, 2)" 
           />
         </g>
       )}

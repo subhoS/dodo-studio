@@ -320,10 +320,75 @@ const Canvas: React.FC<CanvasProps> = ({
               const isSelected = selectedIds.includes(el.id);
               const isEditing = el.id === editingTextId;
               const isHovered = hoveredId === el.id;
+
+              const findRootGroup = (eid: string): string => {
+                let current = elements.find(e => e.id === eid);
+                if (!current) return eid;
+                while (current && current.parentId) {
+                  const parent = elements.find(e => e.id === current?.parentId);
+                  if (!parent) break;
+                  current = parent;
+                }
+                return current ? current.id : eid;
+              };
+
+              const handleItemClick = (e: React.MouseEvent) => {
+                if (activeTool !== "selection" || el.locked) return;
+                e.stopPropagation();
+
+                const rootId = findRootGroup(el.id);
+                const isRootSelected = selectedIds.includes(rootId);
+                
+                // If root is NOT selected, select root. 
+                // If root IS selected, select the item itself (drill-down).
+                let targetId = isRootSelected ? el.id : rootId;
+                
+                // If it's a double-click on text, let doubleClick handle it.
+                // Shift key logic:
+                let nextSelection: string[];
+                if (e.shiftKey) {
+                  nextSelection = selectedIds.includes(targetId)
+                    ? selectedIds.filter(id => id !== targetId)
+                    : [...selectedIds, targetId];
+                } else {
+                  nextSelection = [targetId];
+                }
+
+                onSelect(nextSelection);
+                
+                setDragInfo({ 
+                  mode: "move", 
+                  startX: getMousePos(e).x, 
+                  startY: getMousePos(e).y, 
+                  elementOffsets: elements
+                    .filter(i => nextSelection.includes(i.id))
+                    .map(i => ({ 
+                      id: i.id, x: i.x, y: i.y, x2: i.x2, y2: i.y2, 
+                      points: i.points ? [...i.points] : undefined 
+                    })) 
+                });
+              };
+
               return (
-                <g key={el.id} onMouseDown={e => { if(activeTool==="selection") { if (el.locked) return; e.stopPropagation(); let nS = e.shiftKey ? (selectedIds.includes(el.id)?selectedIds.filter(id=>id!==el.id):[...selectedIds, el.id]):[el.id]; onSelect(nS); setDragInfo({ mode:"move", startX:getMousePos(e).x, startY:getMousePos(e).y, elementOffsets:elements.filter(i=>nS.includes(i.id)).map(i=>({ id:i.id, x:i.x, y:i.y, x2:i.x2, y2:i.y2, points:i.points?[...i.points]:undefined })) }); } }} onDoubleClick={()=>{if(el.type==="text" && !el.locked){setEditingTextId(el.id); setEditingTextPos({x:el.x, y:el.y}); isNewTextRef.current = false; setTimeout(()=>textareaRef.current?.focus(), 50);}}} style={{ cursor: el.locked ? "not-allowed" : activeTool==="selection"?"pointer":"default" }}>
+                <g 
+                  key={el.id} 
+                  onMouseDown={handleItemClick} 
+                  onDoubleClick={() => {
+                    if (el.locked) return;
+                    if (el.type === "text") {
+                      setEditingTextId(el.id); 
+                      setEditingTextPos({ x: el.x, y: el.y }); 
+                      isNewTextRef.current = false; 
+                      setTimeout(() => textareaRef.current?.focus(), 50);
+                    } else if (el.parentId) {
+                      // Drill down on non-text elements too? 
+                      // Selecting the leaf on double click is standard.
+                      onSelect([el.id]);
+                    }
+                  }} 
+                  style={{ cursor: el.locked ? "not-allowed" : activeTool === "selection" ? "pointer" : "default" }}
+                >
                   <HandDrawnElement_v2 element={el} isSelected={isSelected} isEditing={isEditing} isHovered={isHovered} theme={theme} />
-                  {/* We don't render handles inside the clip group because they should be visible outside */}
                 </g>
               );
             })}

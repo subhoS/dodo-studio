@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement, Project, CanvasSize } from "../types/svg";
-import { simplifyPath, isSegmentIntersectingCircle } from "../utils/geometry";
+import { simplifyPath, isSegmentIntersectingCircle, getElementBounds } from "../utils/geometry";
 import { performBooleanOp } from "../utils/booleanOperations";
 
 
@@ -371,22 +371,34 @@ export const useSvgStore = () => {
       if (ids.length < 2 || !activeProjectId) return;
       const currentPrj = projectsRef.current.find(p => p.id === activeProjectId);
       if (!currentPrj) return;
+      
       const selected = currentPrj.elements.filter(el => ids.includes(el.id));
-      const minX = Math.min(...selected.map(el => el.x));
-      const minY = Math.min(...selected.map(el => el.y));
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      
+      selected.forEach(el => {
+        const b = getElementBounds(el);
+        minX = Math.min(minX, b.x);
+        minY = Math.min(minY, b.y);
+        maxX = Math.max(maxX, b.x + b.width);
+        maxY = Math.max(maxY, b.y + b.height);
+      });
+
       const groupId = `group-${crypto.randomUUID()}`;
       const groupNode: SvgElement = {
         id: groupId,
         type: "section",
-        name: `Group ${elements.length / 5 + 1}`,
+        name: `Group ${Math.floor(elements.length / 5 + 1)}`,
         x: minX,
         y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
         fill: "transparent",
         stroke: "transparent",
         strokeWidth: 0,
         visible: true,
         seed: Math.random(),
         roughness: 0,
+        rotation: 0,
       };
       updateAndSave(prev => {
         const next = prev.map(el => ids.includes(el.id) ? { ...el, parentId: groupId } : el);
