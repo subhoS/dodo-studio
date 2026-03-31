@@ -37,7 +37,7 @@ const App: React.FC = () => {
   } = useSvgStore();
 
   const [activeTool, setActiveTool] = useState("selection");
-  const [showLayers, setShowLayers] = useState(false);
+  const [showLayers, setShowLayers] = useState(true);
   const [showLibrary, setShowLibrary] = useState(false);
   const [gridEnabled, setGridEnabled] = useState(false);
   const [theme, setTheme] = useState<"light" | "dark">("dark");
