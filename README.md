@@ -49,9 +49,10 @@ A modern, focused environment featuring glassmorphic toolbars and professional-g
 - **Fit-to-Screen Engine**: Pro-grade framing engine that automatically aligns artboards to your viewport.
 
 ### 📐 Precision & Effects
-- **Visual Depth System**: Hardware-accelerated SVG Drop Shadows and 8 professional Blend Modes (Multiply, Screen, etc.).
+- **Professional Inspector**: A categorized, modular property system that groups settings into logical sections (Layout, Style, Typography, Effects) for a streamlined workflow.
+- **Font Gallery Menu**: Real-time typeface previews within a specialized selection menu.
+- **Visual Depth System**: Hardware-accelerated SVG Drop Shadows and 8 professional Blend Modes.
 - **Batch Editing**: Context-aware Property Bar that supports simultaneous updates for multiple selected elements.
-- **Center-Point Rotation**: Unified rotation around the visual centroid of selected groups or individual complex paths.
 - **Smart Alignment & Snapping**: Precise pixel-perfect snapping for all complex path types and geometric results.
 
 ---
