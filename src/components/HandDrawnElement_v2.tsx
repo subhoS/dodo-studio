@@ -51,7 +51,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
   const centerY = bounds.y + bounds.height / 2;
 
   const paths = useMemo(() => {
-    if (!generator || element.type === "text") return [];
+    if (!generator || element.type === "text" || element.type === "section") return [];
     const strokeLineDash = element.strokeStyle === "dashed" ? [8, 8] : element.strokeStyle === "dotted" ? [2, 4] : undefined;
     const options: any = {
       fill: element.fill === "transparent" ? undefined : element.fill,
@@ -101,46 +101,7 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
     } catch (e) { return []; }
   }, [element, generator]);
 
-  if (element.type === "text") {
-    const fs = element.fontSize || 24;
-    return (
-      <g 
-        transform={`rotate(${element.rotation || 0}, ${centerX}, ${centerY})`}
-        style={{ pointerEvents: "all", cursor: "pointer" }}
-      >
-        {/* Transparent hit area */}
-        <rect 
-          x={bounds.x} 
-          y={bounds.y} 
-          width={bounds.width} 
-          height={bounds.height} 
-          fill="transparent" 
-        />
-        <text 
-          x={element.x} 
-          y={element.y} 
-          dominantBaseline="hanging"
-          style={{ 
-            fontFamily: element.fontFamily || "Inter, sans-serif", 
-            fontSize: `${fs}px`, 
-            fontWeight: element.fontWeight || 800, 
-            fontStyle: element.fontStyle || "normal",
-            textDecoration: element.textDecoration || "none",
-            textTransform: element.textTransform || "none",
-            lineHeight: element.lineHeight || 1.2,
-            letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : "normal",
-            fill: element.stroke, 
-            opacity: element.opacity ?? 1, 
-            userSelect: "none", 
-            whiteSpace: "pre-wrap"
-          }}
-        >
-          {element.content || (isSelected ? "Type here..." : "")}
-        </text>
-      </g>
-    );
-  }
-
+  // SPECIAL: Section Rendering (No filters/blends)
   if (element.type === "section") {
     return (
       <g style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer" }}>
@@ -163,15 +124,20 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
     );
   }
 
+  const textLines = useMemo(() => {
+    if (element.type !== "text") return [];
+    return (element.content || (isSelected ? "Type here..." : "")).split("\n");
+  }, [element.content, element.type, isSelected]);
+
   return (
-    <g transform={`rotate(${element.rotation || 0}, ${centerX}, ${centerY})`} style={{ pointerEvents: "all", cursor: isSelected ? "move" : "pointer", opacity: element.opacity ?? 1 }}>
+    <g transform={`rotate(${element.rotation || 0}, ${centerX}, ${centerY})`} style={{ pointerEvents: "all", opacity: element.opacity ?? 1 }}>
       <defs>
         <filter id="selection-glow" x="-20%" y="-20%" width="140%" height="140%">
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feComposite in="SourceGraphic" in2="blur" operator="over" />
         </filter>
         {element.dropShadow?.enabled && (
-          <filter id={`shadow-${element.id}`} x="-50%" y="-50%" width="200%" height="200%">
+          <filter id={`shadow-${element.id}`} x="-100%" y="-100%" width="300%" height="300%">
             <feDropShadow 
               dx={element.dropShadow.offsetX} 
               dy={element.dropShadow.offsetY} 
@@ -181,92 +147,104 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
           </filter>
         )}
       </defs>
-      {/* HOVER GLOW / GHOST OUTLINE */}
+
+      {/* SEPARATE G FOR SELECTION TO PREVENT FILTER COLLISION */}
+      <g style={{ filter: isSelected ? "url(#selection-glow)" : "none" }}>
+        <g style={{ 
+          filter: element.dropShadow?.enabled ? `url(#shadow-${element.id})` : "none",
+          mixBlendMode: element.blendMode as any || "normal",
+          isolation: "isolate"
+        }}>
+          {element.type === "text" ? (
+             <text 
+               x={element.x} 
+               y={element.y} 
+               dominantBaseline="hanging"
+               style={{ 
+                 fontFamily: element.fontFamily || "Inter, sans-serif", 
+                 fontSize: `${element.fontSize || 24}px`, 
+                 fontWeight: element.fontWeight || 800, 
+                 fontStyle: element.fontStyle || "normal",
+                 textDecoration: element.textDecoration || "none",
+                 textTransform: element.textTransform || "none",
+                 letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : "normal",
+                 fill: element.stroke, 
+                 userSelect: "none"
+               }}
+             >
+               {textLines.map((line, i) => (
+                 <tspan 
+                   key={i} 
+                   x={element.x} 
+                   dy={i === 0 ? 0 : (element.fontSize || 24) * (element.lineHeight || 1.2)}
+                 >
+                   {line}
+                 </tspan>
+               ))}
+             </text>
+          ) : (
+            <>
+              {element.fillStyle === "solid" ? (
+                <>
+                  {element.type === "rect" && <rect x={element.x} y={element.y} width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} rx={element.cornerRadius} ry={element.cornerRadius} />}
+                  {element.type === "circle" && <ellipse cx={element.x + (element.width || 0) / 2} cy={element.y + (element.height || 0) / 2} rx={(element.width || 0) / 2} ry={(element.height || 0) / 2} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
+                  {element.type === "line" && <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
+                  {element.type === "arrow" && (
+                    <g>
+                      <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke={element.stroke} strokeWidth={element.strokeWidth} />
+                      {(() => {
+                        const x1 = element.x, y1 = element.y, x2 = element.x2 || 0, y2 = element.y2 || 0;
+                        const angle = Math.atan2(y2 - y1, x2 - x1), headL = 15, headA = Math.PI / 6;
+                        return (
+                          <>
+                            <line x1={x2} y1={y2} x2={x2 - headL * Math.cos(angle - headA)} y2={y2 - headL * Math.sin(angle - headA)} stroke={element.stroke} strokeWidth={element.strokeWidth} />
+                            <line x1={x2} y1={y2} x2={x2 - headL * Math.cos(angle + headA)} y2={y2 - headL * Math.sin(angle + headA)} stroke={element.stroke} strokeWidth={element.strokeWidth} />
+                          </>
+                        );
+                      })()}
+                    </g>
+                  )}
+                  {element.type === "pencil" && element.points && (
+                    <polyline points={element.points.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={element.stroke} strokeWidth={element.strokeWidth} />
+                  )}
+                  {element.type === "image" && element.url && (
+                    <image href={element.url} x={element.x} y={element.y} width={element.width} height={element.height} preserveAspectRatio="xMidYMid meet" />
+                  )}
+                  {element.type === "svg" && element.svgContent && (
+                    <g transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`} dangerouslySetInnerHTML={{ __html: safeSvg }} />
+                  )}
+                  {element.type === "path" && element.content && (
+                    <path d={element.content} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} vectorEffect="non-scaling-stroke" transform={`translate(${element.x}, ${element.y}) scale(${(element.width || 1) / (element.initialWidth || element.width || 1)}, ${(element.height || 1) / (element.initialHeight || element.height || 1)})`} />
+                  )}
+                </>
+              ) : (
+                <>
+                  {(element.type === "image" || element.type === "svg") && (
+                    <g transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`}>
+                      {element.type === "image" && <image href={element.url} x={0} y={0} width={svgW} height={svgH} preserveAspectRatio="xMidYMid meet" />}
+                      {element.type === "svg" && <g dangerouslySetInnerHTML={{ __html: safeSvg }} />}
+                    </g>
+                  )}
+                  {paths.map((p: any, i: number) => <path key={`${element.id}-${i}`} d={p.d} fill={p.fill || "none"} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeDasharray={p.strokeDasharray} />)}
+                </>
+              )}
+            </>
+          )}
+        </g>
+      </g>
+      {/* HOVER GLOW / GHOST OUTLINE (Restored) */}
       {isHovered && !isSelected && (
-        <g style={{ opacity: 0.4 }}>
-          {element.type === "rect" && <rect x={element.x - 2} y={element.y - 2} width={(element.width || 0) + 4} height={(element.height || 0) + 4} rx={(element.cornerRadius || 0) + 2} fill="none" stroke="#4f8bff" strokeWidth="2" />}
-          {element.type === "circle" && <ellipse cx={element.x + (element.width || 0) / 2} cy={element.y + (element.height || 0) / 2} rx={(element.width || 0) / 2 + 2} ry={(element.height || 0) / 2 + 2} fill="none" stroke="#4f8bff" strokeWidth="2" />}
-          {(element.type === "line" || element.type === "arrow") && <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke="#4f8bff" strokeWidth={(element.strokeWidth || 2) + 4} strokeLinecap="round" />}
+        <g style={{ opacity: 0.3, pointerEvents: "none" }}>
+          <rect 
+            x={bounds.x - 2} y={bounds.y - 2} 
+            width={bounds.width + 4} height={bounds.height + 4} 
+            rx={element.type === "rect" ? (element.cornerRadius || 0) + 2 : (element.type === "circle" ? bounds.width : 4)} 
+            fill="none" stroke="#22d3ee" strokeWidth="2" strokeDasharray="4 2" 
+          />
         </g>
       )}
-      <g style={{ 
-        filter: isSelected ? "url(#selection-glow)" : (element.dropShadow?.enabled ? `url(#shadow-${element.id})` : "none"),
-        mixBlendMode: element.blendMode as any || "normal"
-      }}>
-        {element.fillStyle === "solid" ? (
-          <>
-            {element.type === "rect" && <rect x={element.x} y={element.y} width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} rx={element.cornerRadius} ry={element.cornerRadius} />}
-            {element.type === "circle" && <ellipse cx={element.x + (element.width || 0) / 2} cy={element.y + (element.height || 0) / 2} rx={(element.width || 0) / 2} ry={(element.height || 0) / 2} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
-            {element.type === "line" && <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke={element.stroke} strokeWidth={element.strokeWidth} />}
-            {element.type === "arrow" && (
-              <g>
-                <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke={element.stroke} strokeWidth={element.strokeWidth} />
-                {(() => {
-                  const x1 = element.x, y1 = element.y, x2 = element.x2 || 0, y2 = element.y2 || 0;
-                  const angle = Math.atan2(y2 - y1, x2 - x1), headL = 15, headA = Math.PI / 6;
-                  return (
-                    <>
-                      <line x1={x2} y1={y2} x2={x2 - headL * Math.cos(angle - headA)} y2={y2 - headL * Math.sin(angle - headA)} stroke={element.stroke} strokeWidth={element.strokeWidth} />
-                      <line x1={x2} y1={y2} x2={x2 - headL * Math.cos(angle + headA)} y2={y2 - headL * Math.sin(angle + headA)} stroke={element.stroke} strokeWidth={element.strokeWidth} />
-                    </>
-                  );
-                })()}
-              </g>
-            )}
-            {element.type === "pencil" && element.points && (
-              <polyline points={element.points.map(p => `${p.x},${p.y}`).join(" ")} fill="none" stroke={element.stroke} strokeWidth={element.strokeWidth} />
-            )}
-            {element.type === "image" && element.url && (
-              <image 
-                href={element.url} 
-                x={element.x} 
-                y={element.y} 
-                width={element.width} 
-                height={element.height} 
-                preserveAspectRatio="xMidYMid meet"
-              />
-            )}
-            {element.type === "svg" && element.svgContent && (
-              <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`}
-                dangerouslySetInnerHTML={{ __html: safeSvg }} 
-              />
-            )}
-            {element.type === "path" && element.content && (
-              <path 
-                d={element.content} 
-                fill={element.fill} 
-                stroke={element.stroke} 
-                strokeWidth={element.strokeWidth} 
-                vectorEffect="non-scaling-stroke"
-                transform={`translate(${element.x}, ${element.y}) scale(${(element.width || 1) / (element.initialWidth || element.width || 1)}, ${(element.height || 1) / (element.initialHeight || element.height || 1)})`}
-              />
-            )}
-            {/* Sections are handled outside this block now */}
-          </>
-        ) : (
-          <>
-            {element.type === "image" && element.url && (
-              <image 
-                href={element.url} 
-                x={element.x} 
-                y={element.y} 
-                width={element.width} 
-                height={element.height} 
-                preserveAspectRatio="xMidYMid meet"
-              />
-            )}
-            {element.type === "svg" && element.svgContent && (
-              <g 
-                transform={`translate(${element.x},${element.y}) scale(${(element.width||100)/svgW}, ${(element.height||100)/svgH})`}
-                dangerouslySetInnerHTML={{ __html: safeSvg }} 
-              />
-            )}
-            {paths.map((p: any, i: number) => <path key={`${element.id}-${i}`} d={p.d} fill={p.fill || "none"} stroke={p.stroke} strokeWidth={p.strokeWidth} strokeDasharray={p.strokeDasharray} />)}
-          </>
-        )}
-      </g>
     </g>
   );
 });
+
 export default HandDrawnElement_v2;
