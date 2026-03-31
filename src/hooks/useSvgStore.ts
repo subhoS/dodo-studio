@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import type { ShapeType, SvgElement, Project, CanvasSize } from "../types/svg";
 import { simplifyPath, isSegmentIntersectingCircle } from "../utils/geometry";
+import { performBooleanOp } from "../utils/booleanOperations";
+
 
 const PROJECTS_STORAGE_KEY = "vibe_code_projects_v2";
 const ACTIVE_PROJECT_KEY = "vibe_code_active_id";
@@ -503,6 +505,45 @@ export const useSvgStore = () => {
     [updateAndSave],
   );
 
+  const applyBooleanOperation = useCallback(
+    (ids: string[], type: "union" | "intersect" | "exclude") => {
+      const selected = elements.filter((el) => ids.includes(el.id));
+      if (selected.length < 2) return;
+
+      const result = performBooleanOp(selected, type);
+      if (!result) return;
+
+      const newId = crypto.randomUUID();
+      const first = selected[0];
+      const newElement: SvgElement = {
+        id: newId,
+        type: "path",
+        content: result.path,
+        x: result.x,
+        y: result.y,
+        width: result.width,
+        height: result.height,
+        initialWidth: result.width,
+        initialHeight: result.height,
+        pathData: result.raw,
+        fill: first.fill === "transparent" ? "#ffffff" : first.fill,
+        fillStyle: "solid",
+        stroke: first.stroke,
+        strokeWidth: first.strokeWidth,
+        roughness: 0,
+        seed: Math.floor(Math.random() * 1000),
+        visible: true,
+        name: `${type.toUpperCase()} Result`,
+        opacity: first.opacity ?? 1,
+        rotation: 0,
+      };
+
+      updateAndSave((prev) => [...prev.filter((el) => !ids.includes(el.id)), newElement]);
+      setSelectedIds([newId]);
+    },
+    [elements, updateAndSave, setSelectedIds],
+  );
+
   const clearCanvas = useCallback(() => {
     updateAndSave([]);
     setSelectedIds([]);
@@ -560,6 +601,7 @@ export const useSvgStore = () => {
     sendToBack,
     reorderElements,
     alignElements,
+    applyBooleanOperation,
     clearCanvas,
     undo,
     redo,

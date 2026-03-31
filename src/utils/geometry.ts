@@ -71,6 +71,12 @@ export const getElementBounds = (element: SvgElement): Bounds => {
     minY = element.y;
     width = tw;
     height = th;
+  } else if (element.type === "path") {
+    // Uses element.x, element.y, element.width, element.height directly
+    minX = element.x;
+    minY = element.y;
+    width = element.width || 2;
+    height = element.height || 2;
   }
 
   if (element.rotation) {

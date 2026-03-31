@@ -27,6 +27,7 @@ const App: React.FC = () => {
     addElement, updateElement, updateElements, removeElements, 
     duplicateElements, bringToFront, sendToBack, 
     reorderElements, groupElements, ungroupElements, alignElements, 
+    applyBooleanOperation,
     toggleVisibility, toggleLock,
     addPoint, finalizeDrawing,
     undo, redo, clearCanvas,
@@ -466,7 +467,7 @@ const App: React.FC = () => {
             eraseFromPencil={eraseFromPencil}
           />
 
-          {selectedElement && (
+          {selectedIds.length > 0 && (
             <Box sx={{ 
               position: "absolute", 
               bottom: (activeTool === "eraser") ? 110 : 30, // Stack above eraser settings if both active
@@ -476,16 +477,21 @@ const App: React.FC = () => {
               transition: "bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1)",
               maxWidth: "calc(100% - 40px)"
             }}>
-              <PropertyBar
-                element={selectedElement}
-                onUpdate={updateElement}
-                onRemove={(id) => removeElements([id])}
-                onBringToFront={(id) => bringToFront([id])}
-                onSendToBack={(id) => sendToBack([id])}
-                onDuplicate={(id) => duplicateElements([id])}
+              { (selectedElement || (selectedIds.length > 0 && elements.find(el => el.id === selectedIds[0]))) && (
+                <PropertyBar
+                  element={selectedElement || elements.find(el => el.id === selectedIds[0])!}
+                  selectedIds={selectedIds}
+                onUpdate={(id, updates) => updateElement(id, updates)}
+                onMultiUpdate={(ids, updates) => updateElements(ids, updates)}
+                onRemove={(id) => removeElements(selectedIds.includes(id) ? selectedIds : [id])}
+                onBringToFront={(id) => bringToFront(selectedIds.includes(id) ? selectedIds : [id])}
+                onSendToBack={(id) => sendToBack(selectedIds.includes(id) ? selectedIds : [id])}
+                onDuplicate={(id) => duplicateElements(selectedIds.includes(id) ? selectedIds : [id])}
                 onAlign={(_, align) => alignElements(selectedIds, align)}
+                onBooleanOp={applyBooleanOperation}
                 theme={theme}
               />
+              )}
             </Box>
           )}
 

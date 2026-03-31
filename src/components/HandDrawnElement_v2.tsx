@@ -123,7 +123,12 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
           style={{ 
             fontFamily: element.fontFamily || "Inter, sans-serif", 
             fontSize: `${fs}px`, 
-            fontWeight: 800, 
+            fontWeight: element.fontWeight || 800, 
+            fontStyle: element.fontStyle || "normal",
+            textDecoration: element.textDecoration || "none",
+            textTransform: element.textTransform || "none",
+            lineHeight: element.lineHeight || 1.2,
+            letterSpacing: element.letterSpacing ? `${element.letterSpacing}px` : "normal",
             fill: element.stroke, 
             opacity: element.opacity ?? 1, 
             userSelect: "none", 
@@ -165,6 +170,16 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
           <feGaussianBlur stdDeviation="3" result="blur" />
           <feComposite in="SourceGraphic" in2="blur" operator="over" />
         </filter>
+        {element.dropShadow?.enabled && (
+          <filter id={`shadow-${element.id}`} x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow 
+              dx={element.dropShadow.offsetX} 
+              dy={element.dropShadow.offsetY} 
+              stdDeviation={element.dropShadow.blur} 
+              floodColor={element.dropShadow.color} 
+            />
+          </filter>
+        )}
       </defs>
       {/* HOVER GLOW / GHOST OUTLINE */}
       {isHovered && !isSelected && (
@@ -174,7 +189,10 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
           {(element.type === "line" || element.type === "arrow") && <line x1={element.x} y1={element.y} x2={element.x2} y2={element.y2} stroke="#4f8bff" strokeWidth={(element.strokeWidth || 2) + 4} strokeLinecap="round" />}
         </g>
       )}
-      <g style={{ filter: isSelected ? "url(#selection-glow)" : "none" }}>
+      <g style={{ 
+        filter: isSelected ? "url(#selection-glow)" : (element.dropShadow?.enabled ? `url(#shadow-${element.id})` : "none"),
+        mixBlendMode: element.blendMode as any || "normal"
+      }}>
         {element.fillStyle === "solid" ? (
           <>
             {element.type === "rect" && <rect x={element.x} y={element.y} width={element.width} height={element.height} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} rx={element.cornerRadius} ry={element.cornerRadius} />}
@@ -215,7 +233,14 @@ export const HandDrawnElement_v2: React.FC<HandDrawnElementProps> = React.memo((
               />
             )}
             {element.type === "path" && element.content && (
-              <path d={element.content} fill={element.fill} stroke={element.stroke} strokeWidth={element.strokeWidth} />
+              <path 
+                d={element.content} 
+                fill={element.fill} 
+                stroke={element.stroke} 
+                strokeWidth={element.strokeWidth} 
+                vectorEffect="non-scaling-stroke"
+                transform={`translate(${element.x}, ${element.y}) scale(${(element.width || 1) / (element.initialWidth || element.width || 1)}, ${(element.height || 1) / (element.initialHeight || element.height || 1)})`}
+              />
             )}
             {/* Sections are handled outside this block now */}
           </>

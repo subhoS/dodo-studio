@@ -36,11 +36,28 @@ export interface SvgElement {
   strokeStyle?: "solid" | "dashed" | "dotted";
   fontSize?: number;
   fontFamily?: string;
+  fontWeight?: string | number;
+  fontStyle?: string;
+  textDecoration?: string;
+  textTransform?: "none" | "uppercase" | "lowercase" | "capitalize";
+  lineHeight?: number;
+  letterSpacing?: number;
   rotation?: number;
   cornerRadius?: number;
   bowing?: number;
   locked?: boolean;
   parentId?: string;
+  blendMode?: string;
+  dropShadow?: {
+    enabled: boolean;
+    color: string;
+    blur: number;
+    offsetX: number;
+    offsetY: number;
+  };
+  initialWidth?: number;
+  initialHeight?: number;
+  pathData?: number[][][][]; // MultiPolygon format: [Polygons[Rings[Points[x, y]]]]
 }
 
 export interface CanvasSize {

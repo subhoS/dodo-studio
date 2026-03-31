@@ -20,6 +20,9 @@ interface PropertyBarProps {
   onSendToBack: (id: string) => void;
   onDuplicate: (id: string) => void;
   onAlign: (id: string, alignment: "left" | "center" | "right" | "top" | "v-center" | "bottom") => void;
+  selectedIds?: string[];
+  onMultiUpdate?: (ids: string[], updates: Partial<SvgElement>) => void;
+  onBooleanOp?: (ids: string[], type: "union" | "intersect" | "exclude") => void;
   theme: "light" | "dark";
 }
 
@@ -36,8 +39,15 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
   onSendToBack,
   onDuplicate,
   onAlign,
+  selectedIds = [],
+  onMultiUpdate,
+  onBooleanOp,
   theme,
 }) => {
+  if (!element && selectedIds.length === 0) return null;
+  // If we have selectedIds but no element yet (state lag), use a placeholder or wait
+  if (!element && selectedIds.length > 0) return null; 
+
   const colorInputRef = useRef<HTMLInputElement>(null);
   const borderColor = theme === "dark" ? "rgba(255,255,255,0.12)" : "rgba(0,0,0,0.12)";
   const bgColor = theme === "dark" ? "rgba(22, 27, 34, 0.98)" : "rgba(255, 255, 255, 0.98)";
@@ -46,7 +56,13 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
 
   const colors = ["#ffffff", "#22d3ee", "#ff2e63", "#38bdf8", "#fbbf24", "#4ade80", "#a78bfa"];
 
-  const handleUpdate = (updates: Partial<SvgElement>) => onUpdate(element.id, updates);
+  const handleUpdate = (updates: Partial<SvgElement>) => {
+    if (selectedIds.length > 1 && onMultiUpdate) {
+      onMultiUpdate(selectedIds, updates);
+    } else {
+      onUpdate(element.id, updates);
+    }
+  };
 
 
   const typeIconName =
@@ -245,6 +261,78 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
                     </Box>
                   ))}
                 </Stack>
+                <Divider orientation="vertical" flexItem />
+                <Stack direction="row" spacing={0.5} alignItems="center">
+                  <Tooltip title="Bold">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleUpdate({ fontWeight: element.fontWeight === "bold" || element.fontWeight === 700 ? 400 : "bold" })}
+                      sx={{ color: (element.fontWeight === "bold" || element.fontWeight === 700) ? "#22d3ee" : "inherit", p: 0.5 }}
+                    >
+                      <SafeIcon name="Bold" size={14} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Italic">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleUpdate({ fontStyle: element.fontStyle === "italic" ? "normal" : "italic" })}
+                      sx={{ color: element.fontStyle === "italic" ? "#22d3ee" : "inherit", p: 0.5 }}
+                    >
+                      <SafeIcon name="Italic" size={14} />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Underline">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleUpdate({ textDecoration: element.textDecoration === "underline" ? "none" : "underline" })}
+                      sx={{ color: element.textDecoration === "underline" ? "#22d3ee" : "inherit", p: 0.5 }}
+                    >
+                      <SafeIcon name="Underline" size={14} />
+                    </IconButton>
+                  </Tooltip>
+                  <Divider orientation="vertical" flexItem sx={{ height: 16, my: "auto" }} />
+                  <Tooltip title="Uppercase">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleUpdate({ textTransform: element.textTransform === "uppercase" ? "none" : "uppercase" })}
+                      sx={{ color: element.textTransform === "uppercase" ? "#22d3ee" : "inherit", p: 0.5, fontSize: "0.6rem", fontWeight: 800 }}
+                    >
+                      AA
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Lowercase">
+                    <IconButton 
+                      size="small" 
+                      onClick={() => handleUpdate({ textTransform: element.textTransform === "lowercase" ? "none" : "lowercase" })}
+                      sx={{ color: element.textTransform === "lowercase" ? "#22d3ee" : "inherit", p: 0.5, fontSize: "0.6rem", fontWeight: 800 }}
+                    >
+                      aa
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+                <Divider orientation="vertical" flexItem />
+                <Box sx={{ minWidth: 70, flexShrink: 0 }}>
+                  <Typography sx={{ fontSize: "0.5rem", fontWeight: 900, opacity: 0.5, mb: 0.1 }}>
+                    LINE H. {element.lineHeight || 1.2}
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={element.lineHeight || 1.2} min={0.5} max={3} step={0.1}
+                    onChange={(_, v) => handleUpdate({ lineHeight: v as number })}
+                    sx={{ color: "#22d3ee", py: 0.5 }}
+                  />
+                </Box>
+                <Box sx={{ minWidth: 70, flexShrink: 0, ml: 1 }}>
+                  <Typography sx={{ fontSize: "0.5rem", fontWeight: 900, opacity: 0.5, mb: 0.1 }}>
+                    LETTER S. {element.letterSpacing || 0}px
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={element.letterSpacing || 0} min={-5} max={20} step={0.5}
+                    onChange={(_, v) => handleUpdate({ letterSpacing: v as number })}
+                    sx={{ color: "#22d3ee", py: 0.5 }}
+                  />
+                </Box>
               </>
             )}
           </Stack>
@@ -252,6 +340,109 @@ const PropertyBar: React.FC<PropertyBarProps> = React.memo(({
       )}
 
       <Divider orientation="vertical" flexItem />
+
+      {/* — Visual Effects (Shadow & Blend) — */}
+      <Stack direction="row" spacing={1} alignItems="center" sx={{ flexShrink: 0 }}>
+        <Tooltip title="Drop Shadow">
+          <IconButton 
+            size="small" 
+            onClick={() => handleUpdate({ 
+              dropShadow: { 
+                enabled: !element.dropShadow?.enabled, 
+                color: element.dropShadow?.color || "rgba(0,0,0,0.5)",
+                blur: element.dropShadow?.blur || 10,
+                offsetX: element.dropShadow?.offsetX || 5,
+                offsetY: element.dropShadow?.offsetY || 5
+              } 
+            })}
+            sx={{ color: element.dropShadow?.enabled ? "#ffd33d" : "inherit", p: 0.5 }}
+          >
+            <SafeIcon name="Copy" size={16} />
+          </IconButton>
+        </Tooltip>
+
+        {element.dropShadow?.enabled && (
+           <Box sx={{ minWidth: 60, flexShrink: 0 }}>
+             <Typography sx={{ fontSize: "0.5rem", fontWeight: 900, opacity: 0.5, mb: 0.1 }}>
+               SHADOW BLUR
+             </Typography>
+             <Slider
+               size="small"
+               value={element.dropShadow.blur} min={0} max={50}
+               onChange={(_, v) => handleUpdate({ dropShadow: { ...element.dropShadow!, blur: v as number } })}
+               sx={{ color: "#ffd33d", py: 0.5 }}
+             />
+           </Box>
+        )}
+
+        <Divider orientation="vertical" flexItem sx={{ height: 20 }} />
+        
+        <Tooltip title="Blend Mode">
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <SafeIcon name="Layers" size={16} />
+            <select 
+              value={element.blendMode || "normal"}
+              onChange={(e) => handleUpdate({ blendMode: e.target.value })}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "inherit",
+                fontSize: "0.6rem",
+                fontWeight: 800,
+                cursor: "pointer",
+                outline: "none"
+              }}
+            >
+              <option value="normal">Normal</option>
+              <option value="multiply">Multiply</option>
+              <option value="screen">Screen</option>
+              <option value="overlay">Overlay</option>
+              <option value="darken">Darken</option>
+              <option value="lighten">Lighten</option>
+              <option value="difference">Difference</option>
+              <option value="exclusion">Exclusion</option>
+            </select>
+          </Stack>
+        </Tooltip>
+      </Stack>
+
+      <Divider orientation="vertical" flexItem />
+
+      {/* — Boolean Operations (only for multiple selection) — */}
+      {selectedIds.length > 1 && onBooleanOp && (
+        <>
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ flexShrink: 0 }}>
+            <Tooltip title="Union / Combine">
+              <IconButton 
+                size="small" 
+                onClick={() => onBooleanOp(selectedIds, "union")}
+                sx={{ color: "#22d3ee", p: 0.5, "&:hover": { bgcolor: "rgba(34,211,238,0.1)" } }}
+              >
+                <SafeIcon name="Combine" size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Intersect">
+              <IconButton 
+                size="small" 
+                onClick={() => onBooleanOp(selectedIds, "intersect")}
+                sx={{ color: "#22d3ee", p: 0.5, "&:hover": { bgcolor: "rgba(34,211,238,0.1)" } }}
+              >
+                <SafeIcon name="Intersect" size={18} />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Exclude / Subtract">
+              <IconButton 
+                size="small" 
+                onClick={() => onBooleanOp(selectedIds, "exclude")}
+                sx={{ color: "#22d3ee", p: 0.5, "&:hover": { bgcolor: "rgba(34,211,238,0.1)" } }}
+              >
+                <SafeIcon name="Ungroup" size={18} />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Divider orientation="vertical" flexItem />
+        </>
+      )}
 
       {/* — Alignment Actions — */}
       <Stack direction="row" spacing={0.1} alignItems="center" sx={{ flexShrink: 0 }}>

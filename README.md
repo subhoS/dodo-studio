@@ -39,23 +39,20 @@ A modern, focused environment featuring glassmorphic toolbars and professional-g
 - **Designer Mode**: Pixel-perfect, high-fidelity artboard environment with grid snapping and professional depth.
 
 ### 🛠 Professional Toolset
-- **Geometry & Paths**: Rectangles, Circles, Lines, Arrows, and a flexible Hand-drawn Pencil.
-- **Advanced Text Tool**: Excalidraw-style text editing with auto-resizing and intuitive interaction.
-- **Asset Import**: Seamlessly bring in **Images (PNG, JPG)** and **SVGs** to enrich your designs.
+- **Boolean Geometry Engine**: Recursive Union, Intersect, and Exclude operations for complex vector creation and high-end iconography.
+- **Advanced Text & Typography**: Full control over FontWeight, FontStyle, Text Decoration, Line Height, Letter Spacing, and Case transformations.
+- **Asset Integration**: Seamlessly import **Images (PNG, JPG)** and **SVGs** with proportional scaling and professional depth.
 
-### 📦 Layer Management
-- **Full-Featured Layers Panel**: Reorder with drag-and-drop, toggle visibility, lock layers to prevent accidental edits, and search through your hierarchy.
-- **Atomic Operations**: Duplicate elements, group-level transformations, and unified rotation logic.
-
-### 📐 Precision Transformations
-- **Multi-Selection**: Lasso-select multiple elements and transform them as a single unit.
-- **Proportional Resizing**: Maintain aspect ratios during group scaling.
-- **Center-Point Rotation**: Unified rotation around the visual centroid of selected groups.
-
-### 📐 Intelligent Workspace
-- **Multi-Project Management**: Manage dozens of projects with independent states, persisted locally for privacy.
+### 📦 Layer & Project Management
+- **Full-Featured Layers Panel**: Reorder with drag-and-drop, toggle visibility, lock layers, and search through your design hierarchy.
+- **Multi-Project Dashboard**: Manage dozens of projects with independent states, persisted locally for privacy.
 - **Fit-to-Screen Engine**: Pro-grade framing engine that automatically aligns artboards to your viewport.
-- **Glassmorphic Property Bar**: A context-aware inspector that appears only when you need it, styled with midnight navy depth.
+
+### 📐 Precision & Effects
+- **Visual Depth System**: Hardware-accelerated SVG Drop Shadows and 8 professional Blend Modes (Multiply, Screen, etc.).
+- **Batch Editing**: Context-aware Property Bar that supports simultaneous updates for multiple selected elements.
+- **Center-Point Rotation**: Unified rotation around the visual centroid of selected groups or individual complex paths.
+- **Smart Alignment & Snapping**: Precise pixel-perfect snapping for all complex path types and geometric results.
 
 ---
 
